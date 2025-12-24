@@ -167,10 +167,10 @@ export default async function AdminHomePage({
                       </td>
                       <td className="px-8 py-6 whitespace-nowrap">
                         <p className="text-sm font-bold text-gray-900">
-                          {new Date(i.started_at).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
+                          {new Date(i.started_at).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric', timeZone: 'Asia/Tokyo' })}
                         </p>
                         <p className="text-xs text-gray-400 font-medium">
-                          {new Date(i.started_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(i.started_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })}
                         </p>
                       </td>
                       <td className="px-8 py-6">
