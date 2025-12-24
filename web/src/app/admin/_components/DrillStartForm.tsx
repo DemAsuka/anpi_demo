@@ -54,68 +54,58 @@ export function DrillStartForm() {
   };
 
   return (
-    <section className="rounded-xl border bg-white p-6 shadow-sm h-full">
-      <div className="mb-6">
-        <h2 className="text-lg font-bold text-gray-900">手動訓練の実行</h2>
-        <p className="text-sm text-gray-500">災害をシミュレートして通知テストを行います。</p>
+    <section className="bg-white rounded-[2rem] p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] space-y-8">
+      <div>
+        <h2 className="text-xl font-black text-gray-900">Execute Training</h2>
+        <p className="text-sm font-medium text-gray-400 mt-1">シミュレーションを開始し、通知システムをテストします。</p>
       </div>
 
-      <div className="space-y-5">
-        <div>
-          <label className="mb-1.5 block text-sm font-semibold text-gray-700">
-            シナリオ選択
-          </label>
-          <select
-            value={scenarioId}
-            onChange={(e) => setScenarioId(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none transition"
-          >
-            {SCENARIOS.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <label className="text-[11px] font-black uppercase tracking-wider text-gray-400 ml-1 text-xs">Scenario</label>
+            <select
+              value={scenarioId}
+              onChange={(e) => setScenarioId(e.target.value)}
+              className="w-full bg-gray-50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-blue-500/20 transition-all outline-none"
+            >
+              {SCENARIOS.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[11px] font-black uppercase tracking-wider text-gray-400 ml-1 text-xs">Title</label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full bg-gray-50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-gray-700 placeholder:text-gray-300 focus:ring-2 focus:ring-blue-500/20 transition-all outline-none"
+              placeholder="Training Title"
+            />
+          </div>
         </div>
 
-        <div>
-          <label className="mb-1.5 block text-sm font-semibold text-gray-700">
-            訓練タイトル
-          </label>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none transition"
-            placeholder="例：【定期】防災訓練（震度5弱）"
-          />
-        </div>
-
-        <div>
-          <label className="mb-1.5 block text-sm font-semibold text-gray-700">
-            配信メッセージ
-          </label>
+        <div className="space-y-2">
+          <label className="text-[11px] font-black uppercase tracking-wider text-gray-400 ml-1 text-xs">Custom Message</label>
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:outline-none transition"
-            rows={3}
-            placeholder="従業員への指示を入力..."
+            className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 text-sm font-bold text-gray-700 placeholder:text-gray-300 focus:ring-2 focus:ring-blue-500/20 transition-all outline-none min-h-[100px]"
+            placeholder="従業員へのメッセージを入力..."
           />
         </div>
 
         <button
           onClick={handleStart}
           disabled={loading}
-          className="w-full rounded-lg bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-md hover:bg-blue-700 active:transform active:scale-[0.98] disabled:bg-gray-400 transition-all flex items-center justify-center gap-2"
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl shadow-[0_10px_20px_-5px_rgba(37,99,235,0.3)] hover:shadow-[0_15px_25px_-5px_rgba(37,99,235,0.4)] active:scale-[0.98] transition-all duration-200 disabled:bg-gray-200 disabled:shadow-none flex items-center justify-center gap-3"
         >
           {loading ? (
-            <>
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-              配信準備中...
-            </>
+            <span className="h-5 w-5 animate-spin rounded-full border-3 border-white/30 border-t-white"></span>
           ) : (
-            "訓練通知を配信する"
+            "Dispatch Notification"
           )}
         </button>
       </div>
