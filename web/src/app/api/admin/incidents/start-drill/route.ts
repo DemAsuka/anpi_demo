@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
         `タイトル: ${parsed.data.title}`,
         parsed.data.message ? `メッセージ: ${parsed.data.message}` : "",
         "",
-        "Workflowから回答してください。",
+        "下記のボタンから回答してください。",
       ].filter(Boolean).join("\n"),
     });
   } catch (slackError) {

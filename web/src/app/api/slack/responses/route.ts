@@ -60,12 +60,18 @@ export async function POST(request: NextRequest) {
           .limit(1)
           .maybeSingle();
 
-        const { error } = await supabase.from("responses").insert({
-          incident_id: latestIncident?.id ?? null,
-          slack_user_id: slack_user_id,
-          status: status,
+        const incident_id = latestIncident?.id ?? null;
+
+        // Use upsert to overwrite existing response from the same user for the same incident
+        const { error } = await supabase.from("responses").upsert({
+          incident_id,
+          slack_user_id,
+          status,
           comment: `Answered via Slack Button: ${action.text?.text ?? status}`,
           raw_payload: payload,
+          created_at: new Date().toISOString(),
+        }, {
+          onConflict: "incident_id,slack_user_id",
         });
 
         if (error) {

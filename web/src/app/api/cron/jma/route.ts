@@ -220,7 +220,11 @@ export async function GET(request: NextRequest) {
         // 4. Send Slack notification
         await sendNotification({
           isDrill: false,
-          text: (rule.template ?? "安否確認を開始します: {title}").replace("{title}", entry.title ?? ""),
+          text: [
+            (rule.template ?? "安否確認を開始します: {title}").replace("{title}", entry.title ?? ""),
+            "",
+            "下記のボタンから回答してください。",
+          ].join("\n"),
         });
 
         // 5. Audit log
