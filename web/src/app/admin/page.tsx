@@ -14,12 +14,10 @@ export default async function AdminHomePage({
   searchParams: Promise<{ mode?: string }>;
 }) {
   const { mode } = await searchParams;
-  // デフォルトを 'prod' (本番) にする
   const currentMode = mode === "drill" ? "drill" : "prod";
 
   const supabase = createSupabaseServiceRoleClient();
 
-  // モードに合わせて取得するデータを切り替え
   let query = supabase
     .from("incidents")
     .select("id,status,menu_type,title,started_at,ended_at,slack_channel,is_drill")
@@ -41,7 +39,6 @@ export default async function AdminHomePage({
         .in("incident_id", incidentIds)
     : { data: [] as ResponseRow[] };
 
-  // 回答集計用のMap
   const responseStatsByIncident = new Map<string, { total: number; safe: number; help: number }>();
   for (const r of responses ?? []) {
     if (!r.incident_id) continue;
@@ -52,32 +49,31 @@ export default async function AdminHomePage({
     responseStatsByIncident.set(r.incident_id, stats);
   }
 
-  // 統計用の計算
   const activeCount = incidents?.filter(i => i.status === 'active').length ?? 0;
   const drillCount = incidents?.filter(i => i.is_drill).length ?? 0;
 
   return (
-    <main className="space-y-8">
-      {/* 画面ヘッダー */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {currentMode === "prod" ? "🚨 本番監視ダッシュボード" : "🛠️ 訓練・シミュレーション"}
+    <main className="space-y-10 py-4">
+      {/* 画面ヘッダー: タイポグラフィを重視 */}
+      <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">
+            {currentMode === "prod" ? "Status Monitoring" : "Training Center"}
           </h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="text-gray-500 font-medium text-sm">
             {currentMode === "prod" 
-              ? "実際の災害状況と従業員の安否回答をリアルタイムで監視します。" 
-              : "安否確認の訓練配信とテスト結果の確認を行います。"}
+              ? "リアルタイムの災害状況と安否確認" 
+              : "訓練配信とシミュレーション管理"}
           </p>
         </div>
 
-        {/* タブ切り替えスイッチ */}
-        <div className="flex p-1 bg-gray-100 rounded-xl w-fit border shadow-inner">
+        {/* セグメントコントロール風のタブ切り替え */}
+        <div className="inline-flex p-1 bg-gray-200/50 backdrop-blur-sm rounded-2xl w-fit">
           <a
             href="/admin?mode=prod"
-            className={`px-6 py-2 text-sm font-bold rounded-lg transition-all ${
+            className={`px-8 py-2.5 text-sm font-bold rounded-xl transition-all duration-200 ${
               currentMode === "prod"
-                ? "bg-white text-red-600 shadow-md"
+                ? "bg-white text-red-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)]"
                 : "text-gray-500 hover:text-gray-700"
             }`}
           >
@@ -85,9 +81,9 @@ export default async function AdminHomePage({
           </a>
           <a
             href="/admin?mode=drill"
-            className={`px-6 py-2 text-sm font-bold rounded-lg transition-all ${
+            className={`px-8 py-2.5 text-sm font-bold rounded-xl transition-all duration-200 ${
               currentMode === "drill"
-                ? "bg-white text-blue-600 shadow-md"
+                ? "bg-white text-blue-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)]"
                 : "text-gray-500 hover:text-gray-700"
             }`}
           >
@@ -96,27 +92,21 @@ export default async function AdminHomePage({
         </div>
       </div>
 
-      {/* 統計カードセクション */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border bg-white p-6 shadow-sm">
-          <p className="text-sm font-medium text-gray-500">現在稼働中</p>
-          <p className="mt-2 text-3xl font-bold text-blue-600">{activeCount}</p>
-          <p className="mt-1 text-xs text-gray-400">アクティブなインシデント</p>
-        </div>
-        <div className="rounded-xl border bg-white p-6 shadow-sm">
-          <p className="text-sm font-medium text-gray-500">本日の訓練</p>
-          <p className="mt-2 text-3xl font-bold text-gray-900">{drillCount}</p>
-          <p className="mt-1 text-xs text-gray-400">実施済みの訓練数</p>
-        </div>
-        <div className="rounded-xl border bg-white p-6 shadow-sm">
-          <p className="text-sm font-medium text-gray-500">JMA接続</p>
-          <p className="mt-2 text-3xl font-bold text-green-600">正常</p>
-          <p className="mt-1 text-xs text-gray-400">気象庁フィード監視中</p>
-        </div>
+      {/* 統計カード */}
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+        {[
+          { label: "Active Incidents", value: activeCount, color: "text-blue-600", bg: "bg-blue-50/50" },
+          { label: "Total Drills", value: drillCount, color: "text-gray-900", bg: "bg-gray-50/50" },
+          { label: "JMA Feed", value: "Connected", color: "text-green-600", bg: "bg-green-50/50" },
+        ].map((stat, idx) => (
+          <div key={idx} className={`${stat.bg} rounded-[2rem] p-8 transition-transform hover:scale-[1.02] duration-200`}>
+            <p className="text-[10px] font-black uppercase tracking-wider text-gray-400">{stat.label}</p>
+            <p className={`mt-2 text-4xl font-black ${stat.color}`}>{stat.value}</p>
+          </div>
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-8">
-        {/* 訓練モードの時だけ「訓練開始フォーム」を表示 */}
+      <div className="grid grid-cols-1 gap-10">
         {currentMode === "drill" && (
           <div className="max-w-2xl">
             <DrillStartForm />
@@ -124,23 +114,21 @@ export default async function AdminHomePage({
         )}
 
         {/* リスト表示 */}
-        <section className="rounded-xl border bg-white shadow-sm overflow-hidden">
-          <div className="border-b bg-gray-50/50 p-4">
-            <h2 className="font-semibold text-gray-800">
-              {currentMode === "prod" ? "本番対応履歴" : "訓練実施履歴"}
-            </h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-gray-700">
-              <thead className="bg-gray-50/50 text-left text-gray-500 font-medium">
-                <tr>
-                  <th className="px-4 py-3 border-b">区分</th>
-                  <th className="px-4 py-3 border-b">日時</th>
-                  <th className="px-4 py-3 border-b">タイトル</th>
-                  <th className="px-4 py-3 border-b text-center">回答数</th>
+        <div className="space-y-4">
+          <h2 className="text-lg font-bold text-gray-800 ml-1">
+            {currentMode === "prod" ? "Recent Incidents" : "Training History"}
+          </h2>
+          <div className="bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-gray-50 text-[11px] uppercase tracking-[0.1em] text-gray-400 font-black">
+                  <th className="px-8 py-5">Status</th>
+                  <th className="px-8 py-5">Date & Time</th>
+                  <th className="px-8 py-5">Description</th>
+                  <th className="px-8 py-5 text-center">Responses</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-50">
                 {(incidents ?? []).map((i) => {
                   const stats = responseStatsByIncident.get(i.id) ?? { total: 0, safe: 0, help: 0 };
                   const hasHelp = stats.help > 0;
@@ -148,34 +136,41 @@ export default async function AdminHomePage({
                   return (
                     <tr 
                       key={i.id} 
-                      className={`transition ${hasHelp ? "bg-red-50 hover:bg-red-100/80" : "hover:bg-gray-50/50"}`}
+                      className={`group transition-colors duration-200 ${hasHelp ? "bg-red-50/70" : "hover:bg-gray-50/30"}`}
                     >
-                      <td className="px-4 py-4 whitespace-nowrap">
+                      <td className="px-8 py-6 whitespace-nowrap">
                         {i.is_drill ? (
-                          <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">訓練</span>
+                          <span className="px-3 py-1 text-[10px] font-black uppercase rounded-full bg-blue-100 text-blue-600">Drill</span>
                         ) : (
-                          <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-700/10">本番</span>
+                          <span className="px-3 py-1 text-[10px] font-black uppercase rounded-full bg-red-100 text-red-600">Live</span>
                         )}
                       </td>
-                      <td className="px-4 py-4 text-gray-500 text-xs whitespace-nowrap">
-                        {new Date(i.started_at).toLocaleDateString()} {new Date(i.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      <td className="px-8 py-6 whitespace-nowrap">
+                        <p className="text-sm font-bold text-gray-900">
+                          {new Date(i.started_at).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
+                        </p>
+                        <p className="text-xs text-gray-400 font-medium">
+                          {new Date(i.started_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
                       </td>
-                      <td className="px-4 py-4">
-                        <div className="font-medium text-gray-900">{i.title ?? "-"}</div>
-                        <div className="text-xs text-gray-400 uppercase tracking-tight">{i.menu_type.replace('_', ' ')}</div>
+                      <td className="px-8 py-6">
+                        <p className="text-sm font-bold text-gray-900 leading-tight">{i.title ?? "Unnamed Incident"}</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase mt-1">{i.menu_type.replace('_', ' ')}</p>
                       </td>
-                      <td className="px-4 py-4 text-center">
-                        <div className="flex flex-col items-center gap-1">
-                          <span className="inline-flex items-center justify-center rounded-full bg-gray-800 px-3 py-1 text-xs font-bold text-white shadow-sm">
-                            合計: {stats.total}
-                          </span>
-                          <div className="flex gap-2 mt-1">
-                            <span className="text-[10px] font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                              無事: {stats.safe}
-                            </span>
-                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${stats.help > 0 ? "text-red-600 bg-red-100 border-red-200" : "text-gray-400 bg-gray-50 border-gray-100"}`}>
-                              救助: {stats.help}
-                            </span>
+                      <td className="px-8 py-6 whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-4">
+                          <div className="text-center">
+                            <p className="text-sm font-black text-gray-900">{stats.total}</p>
+                            <p className="text-[9px] font-bold text-gray-400 uppercase">Total</p>
+                          </div>
+                          <div className="h-8 w-px bg-gray-100" />
+                          <div className="text-center">
+                            <p className="text-sm font-black text-blue-500">{stats.safe}</p>
+                            <p className="text-[9px] font-bold text-gray-400 uppercase">Safe</p>
+                          </div>
+                          <div className="text-center">
+                            <p className={`text-sm font-black ${stats.help > 0 ? "text-red-500" : "text-gray-300"}`}>{stats.help}</p>
+                            <p className="text-[9px] font-bold text-gray-400 uppercase">Help</p>
                           </div>
                         </div>
                       </td>
@@ -184,7 +179,7 @@ export default async function AdminHomePage({
                 })}
                 {!incidents?.length && (
                   <tr>
-                    <td className="px-4 py-8 text-center text-gray-500" colSpan={4}>
+                    <td className="px-8 py-12 text-center text-gray-400 text-sm font-medium" colSpan={4}>
                       表示できるデータがありません
                     </td>
                   </tr>
@@ -192,9 +187,8 @@ export default async function AdminHomePage({
               </tbody>
             </table>
           </div>
-        </section>
+        </div>
       </div>
     </main>
   );
 }
-
