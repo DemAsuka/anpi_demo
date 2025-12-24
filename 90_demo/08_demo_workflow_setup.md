@@ -1,54 +1,33 @@
-# Slack Workflow Builder（デモ）設定手順
+# Slack 回答ボタン（インタラクティブ）設定手順
 
-## 本番資料の参照
+デモにおいて、Slack 通知から直接回答を受け取るための設定手順です。
 
-「回答UIは Slack Workflow Builder でOK（一次リリースはWorkflow Builderで固定）」の方針を参照しています。
+## 前提条件
+- Slack App が作成され、ワークスペースにインストールされていること。
+- Vercel へのデプロイが完了し、公開 URL が取得できていること。
 
-- 参照: `1_docs/安否確認ツール_要件定義_v0.1.md`
+## 設定手順
 
-## 目的（デモ）
+### 1. Slack 側での有効化
+1. [Slack API](https://api.slack.com/apps) から対象のアプリを選択。
+2. **Interactivity & Shortcuts** を開く。
+3. トグルを **ON** に切り替える。
+4. **Request URL** を入力：
+   - `https://<あなたのVercelドメイン>/api/slack/responses`
+   - **注意**: URL の末尾に `/` を含めないでください。Next.js のリダイレクトにより POST が GET に化け、405 エラーが発生します。
+5. **Save Changes** を押して保存。
 
-- Slack上で回答 → Webhook → `POST /api/slack/responses` → Supabase(`responses`) に保存
-- 管理画面（`/admin`）で回答数が増えることを確認
+### 2. データベースの制約追加（重複回答の防止）
+同じユーザーが同じインシデントに複数回答した際、最新の回答で上書きされるように、Supabase でユニーク制約を追加します。
 
-## 手順
+SQL Editor で以下を実行：
+```sql
+-- 回答テーブルにユニーク制約を追加
+alter table public.responses add constraint responses_incident_user_unique unique (incident_id, slack_user_id);
+```
 
-### 1. Workflow を作る（デモ用）
-
-- Workflow Builder で新規作成
-- トリガーはデモ用途なら何でもOK
-  - 例: ショートカット / ボタン / DMで起動 等
-
-### 2. フォーム項目（推奨）
-
-Workflowフォームの「変数名（キー）」を以下に寄せると、API側で自動的に取り込みやすいです。
-
-- `incident_id`（テキスト入力）
-  - デモ起動APIの開始通知DMに `incident_id: ...` が出るので、それを貼り付ける
-- `slack_user_id`（テキスト）
-  - 手入力が面倒なら、まずは固定値でもOK（例: `demo_user`）
-- `status`（選択式）
-  - 例: `safe` / `minor` / `serious` / `help`
-- `comment`（任意のテキスト）
-  - 注意文: 住所/電話などPIIを書かない
-
-### 3. Webhook ステップを追加
-
-送信先：
-
-- `POST https://<vercel-demo-domain>/api/slack/responses?secret=<SLACK_WORKFLOW_SHARED_SECRET>`
-
-送信するフィールド：
-
-- 上記フォーム項目をそのまま送る（`incident_id`, `status`, `comment`, `slack_user_id`）
-
-※本実装のAPIは JSON でも form-encoded でも受け取れます。
-
-## 確認方法
-
-1. デモ起動（訓練）
-   - `POST /api/demo/incidents/start?secret=<DEMO_SECRET>`
-2. DMに表示された `incident_id` をWorkflowに入力して送信
-3. Supabaseで `responses` にレコードが作成される
-4. `/admin` の回答数が増える
-
+## デモ実演の流れ
+1. 管理画面から「訓練開始」を配信。
+2. Slack に届いた通知の「✅ 無事です」または「⚠️ 助けが必要」ボタンを押す。
+3. ボタンが「回答を受け付けました」というフィードバックに変わる。
+4. 管理画面をリロードし、回答数（内訳）が更新されていることを示す。

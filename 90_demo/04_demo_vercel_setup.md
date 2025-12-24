@@ -51,6 +51,15 @@ CronでJMAを定期監視し、API/管理画面をVercelでホストする方針
 
 - 5分に1回: `/api/cron/jma?token=<CRON_SECRET>`
 
+### 5. 公開後の URL 更新（重要）
+
+デプロイ完了後、以下の設定を Vercel の URL で更新します：
+
+1. **Slack App 設定**:
+   - `Interactivity & Shortcuts` > `Request URL` を更新。
+2. **Clerk 設定**:
+   - `Domains` や `SSO Connections (Google)` のリダイレクト許可リストに Vercel ドメインを追加。
+
 ## 疎通確認（Vercel）
 
 - `GET https://<demo>/api/health`

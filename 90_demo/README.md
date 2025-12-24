@@ -61,13 +61,13 @@
 
 ## 進捗状況
 
-- [x] Step 1: Supabase セットアップ（テーブル構築・管理者型修正）
+- [x] Step 1: Supabase セットアップ（テーブル構築・管理者型修正・重複防止制約）
 - [x] Step 2: Clerk セットアップ（Googleログイン・JWT連携）
-- [x] Step 3: Slack セットアップ（Bot Token取得・DM設定）
+- [x] Step 3: Slack セットアップ（Bot Token取得・インタラクティブボタン設定）
 - [x] Step 4: ローカル環境構築（.env.local・npm install）
-- [x] Step 5: 疎通確認（管理者ログイン・訓練通知送信）
-- [ ] Step 6: 回答受信フロー（Slack Workflow Builder）
-- [ ] Step 7: Vercel デプロイと Cron 設定
+- [x] Step 5: Vercel デプロイ（GitHub連携・環境変数設定）
+- [x] Step 6: 疎通確認（管理者ログイン・訓練通知送信・ボタン回答）
+- [ ] Step 7: 定期監視（Cron）の設定
 
 ## このフォルダのファイル
 

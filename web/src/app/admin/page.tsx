@@ -11,26 +11,27 @@ type ResponseRow = {
 export default async function AdminHomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ drill?: string }>;
+  searchParams: Promise<{ mode?: string }>;
 }) {
-  const { drill } = await searchParams;
-  const isDrillFilter = drill === "1";
+  const { mode } = await searchParams;
+  // デフォルトを 'prod' (本番) にする
+  const currentMode = mode === "drill" ? "drill" : "prod";
 
   const supabase = createSupabaseServiceRoleClient();
 
+  // モードに合わせて取得するデータを切り替え
   let query = supabase
     .from("incidents")
     .select("id,status,menu_type,title,started_at,ended_at,slack_channel,is_drill")
-    .order("started_at", { ascending: false })
-    .limit(20);
+    .order("started_at", { ascending: false });
 
-  if (drill === "1") {
-    query = query.eq("is_drill", true);
-  } else if (drill === "0") {
+  if (currentMode === "prod") {
     query = query.eq("is_drill", false);
+  } else {
+    query = query.eq("is_drill", true);
   }
 
-  const { data: incidents } = await query;
+  const { data: incidents } = await query.limit(20);
 
   const incidentIds = (incidents ?? []).map((i) => i.id);
   const { data: responses } = incidentIds.length
@@ -57,13 +58,42 @@ export default async function AdminHomePage({
 
   return (
     <main className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-gray-900">
-          安否確認ダッシュボード
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">
-          システムの稼働状況と、現在進行中の安否確認インシデントを一括管理します。
-        </p>
+      {/* 画面ヘッダー */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {currentMode === "prod" ? "🚨 本番監視ダッシュボード" : "🛠️ 訓練・シミュレーション"}
+          </h1>
+          <p className="mt-1 text-sm text-gray-500">
+            {currentMode === "prod" 
+              ? "実際の災害状況と従業員の安否回答をリアルタイムで監視します。" 
+              : "安否確認の訓練配信とテスト結果の確認を行います。"}
+          </p>
+        </div>
+
+        {/* タブ切り替えスイッチ */}
+        <div className="flex p-1 bg-gray-100 rounded-xl w-fit border shadow-inner">
+          <a
+            href="/admin?mode=prod"
+            className={`px-6 py-2 text-sm font-bold rounded-lg transition-all ${
+              currentMode === "prod"
+                ? "bg-white text-red-600 shadow-md"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            本番運用
+          </a>
+          <a
+            href="/admin?mode=drill"
+            className={`px-6 py-2 text-sm font-bold rounded-lg transition-all ${
+              currentMode === "drill"
+                ? "bg-white text-blue-600 shadow-md"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            訓練・テスト
+          </a>
+        </div>
       </div>
 
       {/* 統計カードセクション */}
@@ -85,87 +115,84 @@ export default async function AdminHomePage({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        {/* 左側：訓練開始フォーム */}
-        <div className="lg:col-span-1">
-          <DrillStartForm />
-        </div>
+      <div className="grid grid-cols-1 gap-8">
+        {/* 訓練モードの時だけ「訓練開始フォーム」を表示 */}
+        {currentMode === "drill" && (
+          <div className="max-w-2xl">
+            <DrillStartForm />
+          </div>
+        )}
 
-        {/* 右側：インシデント一覧 */}
-        <div className="lg:col-span-2">
-          <section className="rounded-xl border bg-white shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between border-b bg-gray-50/50 p-4">
-              <h2 className="font-semibold text-gray-800">直近の対応履歴</h2>
-              <div className="flex bg-gray-100 p-1 rounded-lg">
-                <a href="/admin" className={`px-3 py-1 text-xs font-medium rounded-md transition ${!drill ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>すべて</a>
-                <a href="/admin?drill=0" className={`px-3 py-1 text-xs font-medium rounded-md transition ${drill === "0" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>本番</a>
-                <a href="/admin?drill=1" className={`px-3 py-1 text-xs font-medium rounded-md transition ${drill === "1" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}>訓練</a>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-gray-700">
-                <thead className="bg-gray-50/50 text-left text-gray-500 font-medium">
-                  <tr>
-                    <th className="px-4 py-3 border-b">区分</th>
-                    <th className="px-4 py-3 border-b">日時</th>
-                    <th className="px-4 py-3 border-b">タイトル</th>
-                    <th className="px-4 py-3 border-b text-center">回答数</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {(incidents ?? []).map((i) => {
-                    const stats = responseStatsByIncident.get(i.id) ?? { total: 0, safe: 0, help: 0 };
-                    const hasHelp = stats.help > 0;
-                    
-                    return (
-                      <tr 
-                        key={i.id} 
-                        className={`transition ${hasHelp ? "bg-red-50 hover:bg-red-100/80" : "hover:bg-gray-50/50"}`}
-                      >
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          {i.is_drill ? (
-                            <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">訓練</span>
-                          ) : (
-                            <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-700/10">本番</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-4 text-gray-500 text-xs whitespace-nowrap">
-                          {new Date(i.started_at).toLocaleDateString()} {new Date(i.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="font-medium text-gray-900">{i.title ?? "-"}</div>
-                          <div className="text-xs text-gray-400 uppercase tracking-tight">{i.menu_type.replace('_', ' ')}</div>
-                        </td>
-                        <td className="px-4 py-4 text-center">
-                          <div className="flex flex-col items-center gap-1">
-                            <span className="inline-flex items-center justify-center rounded-full bg-gray-800 px-3 py-1 text-xs font-bold text-white shadow-sm">
-                              合計: {stats.total}
+        {/* リスト表示 */}
+        <section className="rounded-xl border bg-white shadow-sm overflow-hidden">
+          <div className="border-b bg-gray-50/50 p-4">
+            <h2 className="font-semibold text-gray-800">
+              {currentMode === "prod" ? "本番対応履歴" : "訓練実施履歴"}
+            </h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-gray-700">
+              <thead className="bg-gray-50/50 text-left text-gray-500 font-medium">
+                <tr>
+                  <th className="px-4 py-3 border-b">区分</th>
+                  <th className="px-4 py-3 border-b">日時</th>
+                  <th className="px-4 py-3 border-b">タイトル</th>
+                  <th className="px-4 py-3 border-b text-center">回答数</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {(incidents ?? []).map((i) => {
+                  const stats = responseStatsByIncident.get(i.id) ?? { total: 0, safe: 0, help: 0 };
+                  const hasHelp = stats.help > 0;
+                  
+                  return (
+                    <tr 
+                      key={i.id} 
+                      className={`transition ${hasHelp ? "bg-red-50 hover:bg-red-100/80" : "hover:bg-gray-50/50"}`}
+                    >
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        {i.is_drill ? (
+                          <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">訓練</span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-700/10">本番</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 text-gray-500 text-xs whitespace-nowrap">
+                        {new Date(i.started_at).toLocaleDateString()} {new Date(i.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="font-medium text-gray-900">{i.title ?? "-"}</div>
+                        <div className="text-xs text-gray-400 uppercase tracking-tight">{i.menu_type.replace('_', ' ')}</div>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="inline-flex items-center justify-center rounded-full bg-gray-800 px-3 py-1 text-xs font-bold text-white shadow-sm">
+                            合計: {stats.total}
+                          </span>
+                          <div className="flex gap-2 mt-1">
+                            <span className="text-[10px] font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                              無事: {stats.safe}
                             </span>
-                            <div className="flex gap-2 mt-1">
-                              <span className="text-[10px] font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                                無事: {stats.safe}
-                              </span>
-                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${stats.help > 0 ? "text-red-600 bg-red-100 border-red-200" : "text-gray-400 bg-gray-50 border-gray-100"}`}>
-                                救助: {stats.help}
-                              </span>
-                            </div>
+                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${stats.help > 0 ? "text-red-600 bg-red-100 border-red-200" : "text-gray-400 bg-gray-50 border-gray-100"}`}>
+                              救助: {stats.help}
+                            </span>
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {!incidents?.length && (
-                    <tr>
-                      <td className="px-4 py-8 text-center text-gray-500" colSpan={4}>
-                        表示できるデータがありません
+                        </div>
                       </td>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </div>
+                  );
+                })}
+                {!incidents?.length && (
+                  <tr>
+                    <td className="px-4 py-8 text-center text-gray-500" colSpan={4}>
+                      表示できるデータがありません
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
     </main>
   );

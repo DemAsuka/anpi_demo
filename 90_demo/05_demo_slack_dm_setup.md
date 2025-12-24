@@ -36,7 +36,17 @@
 2. 「プロフィールを表示」を選択
 3. 「...（その他）」をクリックし、**「メンバーIDをコピー」** を選択（例: `U012ABCDEF`）
 
-### 5. デモの送信先を固定する
+### 5. インタラクティブボタン（回答機能）の設定
+
+1. [Slack API Dashboard](https://api.slack.com/apps) でアプリを開く
+2. 左メニュー **「Interactivity & Shortcuts」** をクリック
+3. **Interactivity** を **ON** にする
+4. **Request URL** に Vercel のエンドポイントを入力：
+   - `https://<あなたのVercelドメイン>/api/slack/responses`
+   - ※末尾に `/` を入れないように注意（405エラーの原因になります）
+5. **Save Changes** をクリック
+
+### 6. デモの送信先を固定する
 
 Vercel の Environment Variables（demo）に以下を設定：
 
