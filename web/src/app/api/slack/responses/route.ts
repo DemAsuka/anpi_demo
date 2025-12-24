@@ -62,21 +62,31 @@ export async function POST(request: NextRequest) {
 
         const incident_id = latestIncident?.id ?? null;
 
-        // Use upsert to overwrite existing response from the same user for the same incident
-        const { error } = await supabase.from("responses").upsert({
-          incident_id,
-          slack_user_id,
-          status,
-          comment: `Answered via Slack Button: ${action.text?.text ?? status}`,
-          raw_payload: payload,
-          created_at: new Date().toISOString(),
-        }, {
-          onConflict: "incident_id,slack_user_id",
-        });
+        // Use upsert to overwrite existing response, or fallback to insert
+        try {
+          const { error: upsertError } = await supabase.from("responses").upsert({
+            incident_id,
+            slack_user_id,
+            status,
+            comment: `Answered via Slack Button: ${action.text?.text ?? status}`,
+            raw_payload: payload,
+            created_at: new Date().toISOString(),
+          }, {
+            onConflict: "incident_id,slack_user_id",
+          });
 
-        if (error) {
-          console.error("DB Error saving Slack response:", error);
-          return new Response("Database error", { status: 500 });
+          if (upsertError) {
+            // If upsert fails due to constraint issues with NULLs, just insert
+            await supabase.from("responses").insert({
+              incident_id,
+              slack_user_id,
+              status,
+              comment: `Answered via Slack Button: ${action.text?.text ?? status}`,
+              raw_payload: payload,
+            });
+          }
+        } catch (err) {
+          console.error("Database operation failed:", err);
         }
 
         // 1. 最新の集計データを取得
