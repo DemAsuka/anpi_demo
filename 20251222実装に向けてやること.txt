@@ -1,0 +1,114 @@
+これから「sample の流れ（要件→詳細要件→設計→実装）」に沿って、今ある資料を入力にしてドキュメント生成→実装開始までの具体手順を、あなたのリポジトリ構成に合わせて指示します。まず現状のソース/構成（Next.js が既にあるか、空プロジェクトか）を確認します。
+
+[7 tools called]
+
+実装はまだコードが無い状態なので、まず **Next.jsプロジェクトを新規作成 → Supabase（DB/Auth）→ Slack（通知/回答受信）→ JMA監視Cron → 管理ダッシュボード** の順に骨格を作るのが最短です。いまから環境（Node/npm）と、どこにアプリを作るのが安全か（既存ファイルとの衝突）を確認して、こちらで雛形まで作った上で手順を提示します。
+
+[4 tools called]
+
+次はプロジェクト雛形を作ります。既存の `1_docs/` や `sample/` と衝突しないよう、Next.js本体は `web/` 配下に作成します（Vercel側でRoot Directoryを `web` に設定すればOK）。
+
+[2 tools called]
+
+止まりポイントが出ました（React Compilerを使うかの質問が対話式で出ています）。対話なしで進めるため、作成コマンドに「React Compilerは使わない」を明示してやり直します。
+
+[37 tools called]
+
+### 実装開始手順（このリポジトリの現状に合わせた手順）
+
+いま `web/` に **Next.js(App Router) 雛形＋最小API** と、`supabase/migrations/` に **初期DBスキーマ** を用意しました。以下の順で進めると最短で疎通します。
+
+---
+
+### 1) Supabase を作成（DB/Auth）
+- Supabaseで新規プロジェクト作成
+- SQL Editor で下記を実行（初期テーブル＋RLS＋admin判定）
+  - `supabase/migrations/20251222023800_init.sql`
+- Auth設定（MVPは **Magic Link** 想定）
+  - Site URL / Redirect URLs に
+    - ローカル: `http://localhost:3000`
+    - 本番: `https://<vercelのURL>` を入れる
+
+---
+
+### 2) 環境変数を設定（ローカル & Vercel）
+`web/env.example` を見ながら、`web/.env.local` を作って以下を埋めます（.envはツール制約で自動生成していません）。
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `CRON_SECRET`（任意の長い文字列）
+- `SLACK_WEBHOOK_URL`（Incoming Webhook URL）
+- `SLACK_WORKFLOW_SHARED_SECRET`（任意の長い文字列）
+
+Vercelにも同じ値を Environment Variables に設定します（**Root Directory は `web`**）。
+
+---
+
+### 3) ローカル起動
+PowerShellで：
+
+```powershell
+cd c:\Users\0319a\Documents\AdministrationSystem\vivecording_Anpi\web
+npm run dev
+```
+
+確認：
+- `http://localhost:3000/api/health` → `{"status":"ok"...}`
+
+---
+
+### 4) 管理画面ログイン（Supabase Auth）
+1. `http://localhost:3000/admin/sign-in` でメールを送信
+2. メールのリンクからログイン
+3. Supabase SQL Editor で **admin_users に自分の user_id を登録**（これがRLSの鍵）
+
+```sql
+insert into public.admin_users (user_id) values ('<auth.users の id>');
+```
+
+その後 `http://localhost:3000/admin` が見えるようになります。
+
+---
+
+### 5) JMA監視（手動疎通 → Vercel Cron）
+まずローカルで手動実行して疎通確認：
+
+- `GET http://localhost:3000/api/cron/jma?token=<CRON_SECRET>`
+
+期待結果：
+- Supabase の `jma_entries` にデータが入る
+- `SLACK_WEBHOOK_URL` のチャンネルに「JMAフィード更新: n件」が投稿される
+
+本番は Vercel Cron で、1分間隔などで
+- `/api/cron/jma?token=<CRON_SECRET>`
+を叩くジョブを追加します。
+
+---
+
+### 6) Slack Workflow Builder（回答受信の疎通）
+Workflow Builderで「フォーム→Webhook送信」を作り、送信先を：
+
+- `POST https://<vercel>/api/slack/responses?secret=<SLACK_WORKFLOW_SHARED_SECRET>`
+
+にして、フォーム項目名を例として
+- `slack_user_id`
+- `status`
+- `comment`
+- （可能なら）`incident_id`
+のように付けます。
+
+まずは **incident_idが空でもOK** です（今のDBは `responses.incident_id` が null を許容、`raw_payload` に全部保存します）。
+
+---
+
+### 7) 次に実装する順番（要件に沿って“完成形”へ近づける）
+1. **incident作成ロジック**（Cron内で `activation_menus` を評価→ `incidents` 作成）
+2. **クールダウン/重複排除**（`jma_entries` の更新と `incidents` の関係づけ）
+3. **Slack投稿を「スレッド追記」に寄せる**（`incidents.slack_thread_ts` を使う）
+4. **回答とincidentの紐付け**（Workflowの送信内容に、最低でも `channel/message_ts` 相当を入れて照合）
+5. **未回答者可視化 / CSV出力 / 監査ログ**
+
+---
+
+必要なら、次の一手として **「incidentを作ってSlackに“回答導線”付きで投稿する」実装**までこちらで続けて入れます（Workflowのトリガー方式に合わせて、最も事故りにくい紐付け方法に寄せます）。

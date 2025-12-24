@@ -1,0 +1,192 @@
+{
+  "version": "v0.1",
+  "updated_at": "2025-12-21",
+  "source": {
+    "provider": "JMA_XML_PULL",
+    "reference": "https://xml.kishou.go.jp/xmlpull.html"
+  },
+  "polling": {
+    "interval_seconds": 60,
+    "feed_mode": "high_frequency"
+  },
+  "feeds": [
+    {
+      "name": "regular",
+      "url": "https://www.data.jma.go.jp/developer/xml/feed/regular.xml"
+    },
+    {
+      "name": "extra",
+      "url": "https://www.data.jma.go.jp/developer/xml/feed/extra.xml"
+    },
+    {
+      "name": "eqvol",
+      "url": "https://www.data.jma.go.jp/developer/xml/feed/eqvol.xml"
+    },
+    {
+      "name": "other",
+      "url": "https://www.data.jma.go.jp/developer/xml/feed/other.xml"
+    }
+  ],
+  "dedupe_and_update": {
+    "goal": "do_not_notify_on_same_content_notify_on_change",
+    "entry_key": {
+      "primary": "atom_entry_id",
+      "fallback": "atom_entry_link_href"
+    },
+    "content_hash": {
+      "atom_fields": [
+        "title",
+        "updated",
+        "link_href"
+      ],
+      "notes": [
+        "同一entry_keyでcontent_hashが同じ場合は通知しない",
+        "同一entry_keyでcontent_hashが変わった場合は『更新』として通知する（初回投稿のスレッド返信等）"
+      ]
+    }
+  },
+  "routes": [
+    {
+      "trigger_type": "shindo",
+      "menu_label": "震度",
+      "feed_names": [
+        "eqvol"
+      ],
+      "match": {
+        "include_keywords_any": [
+          "震度速報",
+          "震源に関する情報",
+          "各地の震度に関する情報",
+          "震度"
+        ]
+      },
+      "activation": {
+        "condition_text": "最大震度 5弱以上で発動（※震度速報→続報が来ても「同一イベント扱い」優先）",
+        "threshold": {
+          "min_intensity": "5-"
+        },
+        "cooldown_minutes": 60
+      },
+      "targeting": {
+        "mode": "coarse_match",
+        "policy_text": "原則「全国」。ただし通知対象（誰に発動するか）は、電文内の対象地域と 拠点（関東・仙台）/従業員登録地点（市区町村） を大まかに突合して決める"
+      },
+      "slack_template": "【安否確認（地震）】\n地震を検知しました（最大震度 {max_shindo}）。\n対象目安：{target_summary}\n今いる場所の状況をもとに、Slackの安否確認Workflowから回答してください（無事/軽傷/重傷/要救助）。\n※コメント欄に住所・電話番号などの個人情報は書かないでください。緊急時は別途連絡してください。"
+    },
+    {
+      "trigger_type": "tsunami",
+      "menu_label": "津波",
+      "feed_names": [
+        "eqvol",
+        "extra"
+      ],
+      "match": {
+        "include_keywords_any": [
+          "大津波警報",
+          "津波警報",
+          "津波注意報",
+          "津波"
+        ]
+      },
+      "activation": {
+        "condition_text": "津波警報以上（警報/大津波警報）で発動（注意報のみは「通知のみ」運用も可）",
+        "threshold": {
+          "min_grade": "warning",
+          "notify_only_if_grade_below": "warning"
+        },
+        "cooldown_minutes": 60
+      },
+      "targeting": {
+        "mode": "coarse_match",
+        "policy_text": "原則「全国」＋沿岸都道府県。通知対象は、電文内の対象沿岸エリアと 拠点/登録地点 を大まかに突合"
+      },
+      "slack_template": "【安否確認（津波）】\n津波情報（{tsunami_level}）を受信しました。\n対象目安：{target_summary}\n沿岸部の方は直ちに安全確保・避難を優先し、落ち着いたらWorkflowから安否回答してください。\n※個人情報は記載しないでください。"
+    },
+    {
+      "trigger_type": "heavy_rain",
+      "menu_label": "豪雨",
+      "feed_names": [
+        "extra"
+      ],
+      "match": {
+        "include_keywords_any": [
+          "特別警報",
+          "大雨特別警報",
+          "気象警報",
+          "大雨警報",
+          "洪水警報",
+          "記録的短時間大雨情報"
+        ]
+      },
+      "activation": {
+        "condition_text": "要件の「豪雨」はまず 特別警報で発動（例：大雨特別警報）。将来、警報・土砂災害警戒情報などへ拡張可能",
+        "threshold": {
+          "mode": "special_warning_only"
+        },
+        "cooldown_minutes": 180
+      },
+      "targeting": {
+        "mode": "coarse_match",
+        "policy_text": "原則「全国」or 拠点県＋従業員登録地点（市区町村） が含まれる場合に対象化（大まか突合でOK）"
+      },
+      "slack_template": "【安否確認（豪雨）】\n気象庁情報：{warning_name} を検知しました。\n対象目安：{target_summary}\n安全確保を優先のうえ、可能になり次第Workflowから安否回答してください。\n※住所・電話番号などの個人情報は記載しないでください。"
+    },
+    {
+      "trigger_type": "river_flood",
+      "menu_label": "河川氾濫",
+      "feed_names": [
+        "extra",
+        "other"
+      ],
+      "match": {
+        "include_keywords_any": [
+          "洪水警報",
+          "氾濫警戒情報",
+          "氾濫危険情報",
+          "氾濫発生情報",
+          "氾濫"
+        ]
+      },
+      "activation": {
+        "condition_text": "暫定：氾濫危険情報以上（危険/発生）で発動（運用次第で「警戒」から発動も可）",
+        "threshold": {
+          "min_flood_level": "dangerous"
+        },
+        "cooldown_minutes": 180
+      },
+      "targeting": {
+        "mode": "coarse_match",
+        "policy_text": "原則「全国」or 拠点県＋登録地点 が対象河川流域/自治体に含まれそうなら（厳密な河川コード突合は将来）"
+      },
+      "slack_template": "【安否確認（河川氾濫）】\n河川関連情報：{flood_level} を検知しました。\n対象目安：{target_summary}\n危険な場所から離れ、安全確保を優先してください。可能になり次第Workflowで安否回答してください。\n※個人情報は記載しないでください。"
+    },
+    {
+      "trigger_type": "civil_protection",
+      "menu_label": "国民保護",
+      "feed_names": [
+        "other"
+      ],
+      "match": {
+        "include_keywords_any": [
+          "国民保護",
+          "Jアラート",
+          "J-ALERT"
+        ]
+      },
+      "activation": {
+        "condition_text": "暫定：受信したら発動（強制発動）",
+        "threshold": {
+          "match_any": true
+        },
+        "cooldown_minutes": 60
+      },
+      "targeting": {
+        "mode": "nationwide",
+        "policy_text": "全国（対象地域が取れる場合は地域も併記）"
+      },
+      "slack_template": "【安否確認（国民保護）】\n国民保護情報を受信しました：{title_or_type}\n対象目安：{target_summary}\nまず身の安全確保を最優先にしてください。落ち着いたらWorkflowから安否回答してください。\n※個人情報は記載しないでください。"
+    }
+  ]
+}
+
+
