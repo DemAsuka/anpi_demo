@@ -35,18 +35,38 @@ export default async function AdminHomePage({
   const { data: responses } = incidentIds.length
     ? await supabase
         .from("responses")
-        .select("id,incident_id,status,created_at")
+        .select("id,incident_id,slack_user_id,status,created_at")
         .in("incident_id", incidentIds)
-    : { data: [] as ResponseRow[] };
+        .order("created_at", { ascending: false })
+    : { data: [] as any[] };
 
   const responseStatsByIncident = new Map<string, { total: number; safe: number; help: number }>();
-  for (const r of responses ?? []) {
-    if (!r.incident_id) continue;
-    const stats = responseStatsByIncident.get(r.incident_id) ?? { total: 0, safe: 0, help: 0 };
-    stats.total++;
-    if (r.status === 'safe') stats.safe++;
-    if (r.status === 'help') stats.help++;
-    responseStatsByIncident.set(r.incident_id, stats);
+  
+  // インシデントごとにグループ化
+  const groupedResponses = new Map<string, any[]>();
+  (responses ?? []).forEach(r => {
+    if (!r.incident_id) return;
+    const list = groupedResponses.get(r.incident_id) ?? [];
+    list.push(r);
+    groupedResponses.set(r.incident_id, list);
+  });
+
+  // 各インシデント内でユーザーごとの最新回答を抽出
+  for (const [incidentId, list] of groupedResponses.entries()) {
+    const latestByUser = new Map<string, any>();
+    list.forEach(r => {
+      if (r.slack_user_id && !latestByUser.has(r.slack_user_id)) {
+        latestByUser.set(r.slack_user_id, r);
+      }
+    });
+
+    const stats = { total: 0, safe: 0, help: 0 };
+    for (const r of latestByUser.values()) {
+      stats.total++;
+      if (r.status === 'safe') stats.safe++;
+      if (r.status === 'help') stats.help++;
+    }
+    responseStatsByIncident.set(incidentId, stats);
   }
 
   const activeCount = incidents?.filter(i => i.status === 'active').length ?? 0;
