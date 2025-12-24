@@ -8,7 +8,7 @@
 
 - 監視: **Vercel Cron で気象庁 XML feeds を定期取得**（60秒想定）
 - 通知: Slack（本番はチャンネル投稿想定だが、デモは **あなたのDM**）
-- 回答: Slack Workflow Builder → Webhook → API → DB
+- 回答: **Slack インタラクティブボタン（スレッド自動集計）**
 - 認証: **Clerk（Google 連携 / MFA）**
 - DB/認可: Supabase（PostgreSQL + RLS + Clerk JWT）
 
@@ -66,8 +66,8 @@
 - [x] Step 3: Slack セットアップ（Bot Token取得・インタラクティブボタン設定）
 - [x] Step 4: ローカル環境構築（.env.local・npm install）
 - [x] Step 5: Vercel デプロイ（GitHub連携・環境変数設定）
-- [x] Step 6: 疎通確認（管理者ログイン・訓練通知送信・ボタン回答）
-- [ ] Step 7: 定期監視（Cron）の設定
+- [x] Step 6: 疎通確認（管理者ログイン・訓練通知送信・ボタン回答・スレッド集計）
+- [x] Step 7: 定期監視（Cron）の設定
 
 ## このフォルダのファイル
 

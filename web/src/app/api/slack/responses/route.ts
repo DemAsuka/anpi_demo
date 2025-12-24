@@ -90,13 +90,23 @@ export async function POST(request: NextRequest) {
         }
 
         // 1. 最新の集計データを取得
+        // ユーザーごとに最新の1件のみをカウント対象にするため、作成日時順で取得
         const { data: allResponses } = await supabase
           .from("responses")
-          .select("status")
-          .eq("incident_id", incident_id);
+          .select("slack_user_id, status")
+          .eq("incident_id", incident_id)
+          .order("created_at", { ascending: false });
 
-        const safeCount = allResponses?.filter((r) => r.status === "safe").length ?? 0;
-        const helpCount = allResponses?.filter((r) => r.status === "help").length ?? 0;
+        // ユーザーIDをキーにして最新のステータスだけを保持
+        const latestStatusByUser = new Map<string, string>();
+        allResponses?.forEach((r) => {
+          if (r.slack_user_id && !latestStatusByUser.has(r.slack_user_id)) {
+            latestStatusByUser.set(r.slack_user_id, r.status);
+          }
+        });
+
+        const safeCount = Array.from(latestStatusByUser.values()).filter((s) => s === "safe").length;
+        const helpCount = Array.from(latestStatusByUser.values()).filter((s) => s === "help").length;
 
         // 2. Slack スレッドに集計状況を返信する
         const botToken = env.SLACK_BOT_TOKEN();
