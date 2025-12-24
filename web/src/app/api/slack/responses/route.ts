@@ -79,8 +79,36 @@ export async function POST(request: NextRequest) {
           return new Response("Database error", { status: 500 });
         }
 
-        // Return a simple confirmation message that Slack will show to the user
-        return new Response(`回答を受け付けました: ${action.text?.text ?? status}`);
+        // 1. 最新の集計データを取得
+        const { data: allResponses } = await supabase
+          .from("responses")
+          .select("status")
+          .eq("incident_id", incident_id);
+
+        const safeCount = allResponses?.filter((r) => r.status === "safe").length ?? 0;
+        const helpCount = allResponses?.filter((r) => r.status === "help").length ?? 0;
+
+        // 2. Slack スレッドに集計状況を返信する
+        const botToken = env.SLACK_BOT_TOKEN();
+        if (botToken) {
+          await fetch("https://slack.com/api/chat.postMessage", {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${botToken}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              channel: payload.channel.id,
+              thread_ts: payload.container.message_ts || payload.message.ts,
+              text: `📢 *安否回答の更新*\n<@${slack_user_id}> さんが 「${
+                action.text?.text ?? status
+              }」 と回答しました。\n\n*📊 現在の集計*\n✅ 無事: ${safeCount}名 / ⚠️ 救助必要: ${helpCount}名`,
+            }),
+          });
+        }
+
+        // Return a confirmation message
+        return new Response(`回答を受理しました（スレッドに集計を投稿しました）`);
       }
     }
   }
