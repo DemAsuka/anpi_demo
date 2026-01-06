@@ -114,7 +114,7 @@ export function LocationSettings({
       const data = await res.json();
       setSysLocations([...sysLocations, data]);
       setIsAddingSys(false);
-      setNewSysLoc({ label: "", address: "", is_permanent: false });
+      setNewSysLoc({ label: "", address: "", is_permanent: false, target_group: "all" });
     } catch (err: any) {
       console.error("API error:", err);
       alert(err.message || "予期せぬエラーが発生しました。");
