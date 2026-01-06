@@ -100,6 +100,7 @@ export async function sendNotification(params: {
   isDrill?: boolean;
   mode?: NotificationMode;
 }) {
+  console.log("Slack Notification Request:", { mode: params.mode, text: params.text });
   let modePrefix = "";
   const mode = params.mode || (params.isDrill ? "drill" : "production");
 
@@ -122,12 +123,14 @@ export async function sendNotification(params: {
   const botToken = env.SLACK_BOT_TOKEN();
   const dmUserId = env.SLACK_DM_USER_ID();
   if (botToken && dmUserId) {
+    console.log("Sending Slack DM to:", dmUserId);
     await postToDm(botToken, dmUserId, text, params.isDrill);
     return;
   }
 
   const webhookUrl = env.SLACK_WEBHOOK_URL();
   if (webhookUrl) {
+    console.log("Sending Slack Webhook to:", webhookUrl.substring(0, 20) + "...");
     await postToWebhook(webhookUrl, text);
     return;
   }

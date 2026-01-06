@@ -165,8 +165,29 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // MVP: notify Slack with a summary of updated feed entries.
-    await postSlackSummary(changed);
+    // --- ステータス更新 & 復旧通知ロジック ---
+    const { data: prevStatus } = await supabase
+      .from("system_status")
+      .select("*")
+      .eq("id", "jma_receiver")
+      .single();
+
+    if (prevStatus && prevStatus.status !== "ok") {
+      // エラーからの復旧通知
+      await sendNotification({
+        text: `【システム復旧】気象データ受信が正常に再開されました。\n前回の成功: ${new Date(prevStatus.last_success_at).toLocaleString('ja-JP')}`,
+        mode: "production",
+      });
+    }
+
+    await supabase
+      .from("system_status")
+      .upsert({
+        id: "jma_receiver",
+        last_success_at: new Date().toISOString(),
+        status: "ok",
+        updated_at: new Date().toISOString()
+      });
 
     // --- Activation Logic ---
     const { data: rules } = await supabase
