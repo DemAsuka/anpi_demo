@@ -44,3 +44,5 @@ alter table public.responses add constraint responses_incident_user_unique uniqu
   - `upsert` (更新) が失敗しても自動的に `insert` (新規作成) に切り替えることで、DBエラーによる 500 エラーを徹底回避。
 - **堅牢なレスポンス設計**: 
   - スレッド投稿や集計処理でエラーが起きても、ユーザーには必ず「回答を受理しました」と返し、デモを継続させます。
+- **タイムゾーン（JST）への対応**:
+  - Vercel サーバー（UTC）上でも、管理画面や Slack 通知の時刻が日本時間（JST）で正しく表示されるよう、表示ロジックを固定しています。

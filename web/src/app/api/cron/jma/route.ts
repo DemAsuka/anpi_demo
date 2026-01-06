@@ -176,68 +176,77 @@ export async function GET(request: NextRequest) {
 
     for (const entry of changed) {
       for (const rule of rules ?? []) {
-        // 1. Simple Keyword Match (MVP level logic)
-        // In a production system, you would fetch entry.link and parse the detailed XML.
+        // --- 1. Production Match ---
         const ruleKeywords = (rule.threshold as Record<string, any>)?.keywords ?? [];
-        // Default keywords if none set in DB
-        const defaultKeywords: Record<string, string[]> = {
-          earthquake: ["震度5弱", "震度5強", "震度6弱", "震度6強", "震度7"],
-          tsunami: ["大津波警報", "津波警報"],
-          heavy_rain: ["大雨特別警報"],
-          flood: ["氾濫危険", "氾濫発生"],
-          civil_protection: ["国民保護", "Jアラート"],
-        };
-        const keywords = ruleKeywords.length ? ruleKeywords : (defaultKeywords[rule.menu_type] ?? []);
+        const isProdMatch = ruleKeywords.length > 0 && ruleKeywords.some((k: string) => entry.title?.includes(k));
 
-        const isMatch = keywords.some((k: string) => entry.title?.includes(k));
-        if (!isMatch) continue;
+        if (isProdMatch) {
+          await createIncidentAndNotify(supabase, entry, rule, "production");
+          continue; // Prioritize production alert
+        }
 
-        // 2. Check for duplicate incident for this entry
-        const { data: existingIncident } = await supabase
-          .from("incidents")
-          .select("id")
-          .eq("jma_entry_key", entry.entryKey)
-          .single();
+        // --- 2. Test Match ---
+        const testKeywords = (rule.test_threshold as Record<string, any>)?.keywords ?? [];
+        const isTestMatch = rule.test_enabled && testKeywords.length > 0 && testKeywords.some((k: string) => entry.title?.includes(k));
 
-        if (existingIncident) continue;
-
-        // 3. Create real incident (NOT a drill)
-        const { data: incident, error: incError } = await supabase
-          .from("incidents")
-          .insert({
-            status: "active",
-            menu_type: rule.menu_type,
-            jma_entry_key: entry.entryKey,
-            title: entry.title,
-            is_drill: false,
-            slack_channel: rule.slack_channel ?? "dm",
-          })
-          .select()
-          .single();
-
-        if (incError || !incident) continue;
-
-        // 4. Send Slack notification
-        await sendNotification({
-          isDrill: false,
-          text: [
-            (rule.template ?? "安否確認を開始します: {title}").replace("{title}", entry.title ?? ""),
-            "",
-            "下記のボタンから回答してください。",
-          ].join("\n"),
-        });
-
-        // 5. Audit log
-        await supabase.from("audit_logs").insert({
-          action: "auto_incident_start",
-          target_type: "incident",
-          target_id: incident.id,
-          metadata: { menu_type: rule.menu_type, entry_key: entry.entryKey },
-        });
+        if (isTestMatch) {
+          await createIncidentAndNotify(supabase, entry, rule, "test");
+        }
       }
     }
   }
 
   return NextResponse.json({ ok: true, fetched: fetched.length, changed: changed.length });
+}
+
+async function createIncidentAndNotify(
+  supabase: any,
+  entry: AtomEntry,
+  rule: any,
+  mode: "production" | "test"
+) {
+  // Check for duplicate incident for this entry AND mode
+  const { data: existingIncident } = await supabase
+    .from("incidents")
+    .select("id")
+    .eq("jma_entry_key", entry.entryKey)
+    .eq("mode", mode)
+    .single();
+
+  if (existingIncident) return;
+
+  const { data: incident, error: incError } = await supabase
+    .from("incidents")
+    .insert({
+      status: "active",
+      menu_type: rule.menu_type,
+      jma_entry_key: entry.entryKey,
+      title: entry.title,
+      is_drill: mode === "test",
+      mode: mode,
+      slack_channel: rule.slack_channel ?? "dm",
+    })
+    .select()
+    .single();
+
+  if (incError || !incident) return;
+
+  await sendNotification({
+    mode: mode,
+    text: [
+      (rule.template ?? "安否確認を開始します: {title}").replace("{title}", entry.title ?? ""),
+      "",
+      mode === "test" 
+        ? "【JMA連携試験】気象庁XMLを検知して自動発動しました。下記のボタンから回答してください。"
+        : "下記のボタンから回答してください。",
+    ].join("\n"),
+  });
+
+  await supabase.from("audit_logs").insert({
+    action: "auto_incident_start",
+    target_type: "incident",
+    target_id: incident.id,
+    metadata: { menu_type: rule.menu_type, entry_key: entry.entryKey, mode },
+  });
 }
 

@@ -92,14 +92,32 @@ async function postToDm(
   }
 }
 
+export type NotificationMode = "production" | "drill" | "test";
+
 export async function sendNotification(params: {
   text: string;
   forceDemoPrefix?: boolean;
   isDrill?: boolean;
+  mode?: NotificationMode;
 }) {
-  const drillPrefix = params.isDrill ? "【訓練】" : "";
+  let modePrefix = "";
+  const mode = params.mode || (params.isDrill ? "drill" : "production");
+
+  switch (mode) {
+    case "drill":
+      modePrefix = "【訓練】";
+      break;
+    case "test":
+      modePrefix = "【試験/TEST】";
+      break;
+    case "production":
+    default:
+      modePrefix = "【安否確認】";
+      break;
+  }
+
   const demoPrefix = params.forceDemoPrefix || env.DEMO_MODE() ? "[DEMO] " : "";
-  const text = `${drillPrefix}${demoPrefix}${params.text}`;
+  const text = `${modePrefix}${demoPrefix}${params.text}`;
 
   const botToken = env.SLACK_BOT_TOKEN();
   const dmUserId = env.SLACK_DM_USER_ID();
