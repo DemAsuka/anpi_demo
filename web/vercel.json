@@ -2,11 +2,11 @@
   "crons": [
     {
       "path": "/api/cron/jma?token=anpi_tool_demo_for_meeting_20251226",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 0 * * *"
     },
     {
       "path": "/api/cron/watchdog?token=anpi_tool_demo_for_meeting_20251226",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 1 * * *"
     }
   ]
 }
