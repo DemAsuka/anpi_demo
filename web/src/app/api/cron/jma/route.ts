@@ -196,6 +196,9 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // --- 3. データのクリーンアップ (1週間以上前の不要なデータを削除) ---
+  await supabase.rpc("cleanup_old_jma_entries");
+
   return NextResponse.json({ ok: true, fetched: fetched.length, changed: changed.length });
 }
 
