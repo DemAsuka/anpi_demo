@@ -12,9 +12,9 @@ jobs:
     steps:
       - name: Fetch JMA Data
         run: |
-          curl -X GET "https://vivecording-anpi.vercel.app/api/cron/jma?token=${{ secrets.CRON_SECRET }}"
+          curl -X GET "https://anpi-demo.vercel.app/api/cron/jma?token=${{ secrets.CRON_SECRET }}"
           
       - name: Run Watchdog Check
         run: |
-          curl -X GET "https://vivecording-anpi.vercel.app/api/cron/watchdog?token=${{ secrets.CRON_SECRET }}"
+          curl -X GET "https://anpi-demo.vercel.app/api/cron/watchdog?token=${{ secrets.CRON_SECRET }}"
 
