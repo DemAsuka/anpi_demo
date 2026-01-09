@@ -1,0 +1,20 @@
+name: JMA Data Fetcher
+
+on:
+  schedule:
+    # Run every 5 minutes
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  fetch-jma:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch JMA Data
+        run: |
+          curl -X GET "https://vivecording-anpi.vercel.app/api/cron/jma?token=${{ secrets.CRON_SECRET }}"
+          
+      - name: Run Watchdog Check
+        run: |
+          curl -X GET "https://vivecording-anpi.vercel.app/api/cron/watchdog?token=${{ secrets.CRON_SECRET }}"
+

@@ -19,9 +19,10 @@ export function envBool(name: string): boolean {
 
 export const env = {
   // Public (exposed to browser)
-  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: () => mustGetEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"),
-  NEXT_PUBLIC_SUPABASE_URL: () => mustGetEnv("NEXT_PUBLIC_SUPABASE_URL"),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: () => mustGetEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+  // NOTE: Must be accessed via process.env.VAR_NAME directly for Next.js to inline them in the browser.
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: () => process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY!,
+  NEXT_PUBLIC_SUPABASE_URL: () => process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: () => process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
 
   // Server-only
   CLERK_SECRET_KEY: () => mustGetEnv("CLERK_SECRET_KEY"),

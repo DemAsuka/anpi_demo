@@ -92,24 +92,45 @@ async function postToDm(
   }
 }
 
+export type NotificationMode = "production" | "drill" | "test";
+
 export async function sendNotification(params: {
   text: string;
   forceDemoPrefix?: boolean;
   isDrill?: boolean;
+  mode?: NotificationMode;
 }) {
-  const drillPrefix = params.isDrill ? "【訓練】" : "";
+  console.log("Slack Notification Request:", { mode: params.mode, text: params.text });
+  let modePrefix = "";
+  const mode = params.mode || (params.isDrill ? "drill" : "production");
+
+  switch (mode) {
+    case "drill":
+      modePrefix = "【訓練】";
+      break;
+    case "test":
+      modePrefix = "【試験/TEST】";
+      break;
+    case "production":
+    default:
+      modePrefix = "【安否確認】";
+      break;
+  }
+
   const demoPrefix = params.forceDemoPrefix || env.DEMO_MODE() ? "[DEMO] " : "";
-  const text = `${drillPrefix}${demoPrefix}${params.text}`;
+  const text = `${modePrefix}${demoPrefix}${params.text}`;
 
   const botToken = env.SLACK_BOT_TOKEN();
   const dmUserId = env.SLACK_DM_USER_ID();
   if (botToken && dmUserId) {
+    console.log("Sending Slack DM to:", dmUserId);
     await postToDm(botToken, dmUserId, text, params.isDrill);
     return;
   }
 
   const webhookUrl = env.SLACK_WEBHOOK_URL();
   if (webhookUrl) {
+    console.log("Sending Slack Webhook to:", webhookUrl.substring(0, 20) + "...");
     await postToWebhook(webhookUrl, text);
     return;
   }

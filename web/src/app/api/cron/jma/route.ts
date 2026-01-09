@@ -165,79 +165,117 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // MVP: notify Slack with a summary of updated feed entries.
-    await postSlackSummary(changed);
+    // --- ステータス更新 & 復旧通知ロジック ---
+    const { data: prevStatus } = await supabase
+      .from("system_status")
+      .select("*")
+      .eq("id", "jma_receiver")
+      .single();
+
+    if (prevStatus && prevStatus.status !== "ok") {
+      // エラーからの復旧通知
+      await sendNotification({
+        text: `【システム復旧】気象データ受信が正常に再開されました。\n前回の成功: ${new Date(prevStatus.last_success_at).toLocaleString('ja-JP')}`,
+        mode: "production",
+      });
+    }
+
+    await supabase
+      .from("system_status")
+      .upsert({
+        id: "jma_receiver",
+        last_success_at: new Date().toISOString(),
+        status: "ok",
+        updated_at: new Date().toISOString()
+      });
 
     // --- Activation Logic ---
     const { data: rules } = await supabase
       .from("activation_menus")
-      .select("*")
-      .eq("enabled", true);
+      .select("*");
 
     for (const entry of changed) {
       for (const rule of rules ?? []) {
-        // 1. Simple Keyword Match (MVP level logic)
-        // In a production system, you would fetch entry.link and parse the detailed XML.
+        // --- 1. Production Match ---
         const ruleKeywords = (rule.threshold as Record<string, any>)?.keywords ?? [];
-        // Default keywords if none set in DB
-        const defaultKeywords: Record<string, string[]> = {
-          earthquake: ["震度5弱", "震度5強", "震度6弱", "震度6強", "震度7"],
-          tsunami: ["大津波警報", "津波警報"],
-          heavy_rain: ["大雨特別警報"],
-          flood: ["氾濫危険", "氾濫発生"],
-          civil_protection: ["国民保護", "Jアラート"],
-        };
-        const keywords = ruleKeywords.length ? ruleKeywords : (defaultKeywords[rule.menu_type] ?? []);
+        const isProdMatch = rule.enabled && ruleKeywords.length > 0 && ruleKeywords.some((k: string) => entry.title?.includes(k));
 
-        const isMatch = keywords.some((k: string) => entry.title?.includes(k));
-        if (!isMatch) continue;
+        if (isProdMatch) {
+          await createIncidentAndNotify(supabase, entry, rule, "production");
+          continue; // Prioritize production alert
+        }
 
-        // 2. Check for duplicate incident for this entry
-        const { data: existingIncident } = await supabase
-          .from("incidents")
-          .select("id")
-          .eq("jma_entry_key", entry.entryKey)
-          .single();
+        // --- 2. Test Match ---
+        const testKeywords = (rule.test_threshold as Record<string, any>)?.keywords ?? [];
+        const isTestMatch = rule.test_enabled && testKeywords.length > 0 && testKeywords.some((k: string) => entry.title?.includes(k));
 
-        if (existingIncident) continue;
-
-        // 3. Create real incident (NOT a drill)
-        const { data: incident, error: incError } = await supabase
-          .from("incidents")
-          .insert({
-            status: "active",
-            menu_type: rule.menu_type,
-            jma_entry_key: entry.entryKey,
-            title: entry.title,
-            is_drill: false,
-            slack_channel: rule.slack_channel ?? "dm",
-          })
-          .select()
-          .single();
-
-        if (incError || !incident) continue;
-
-        // 4. Send Slack notification
-        await sendNotification({
-          isDrill: false,
-          text: [
-            (rule.template ?? "安否確認を開始します: {title}").replace("{title}", entry.title ?? ""),
-            "",
-            "下記のボタンから回答してください。",
-          ].join("\n"),
-        });
-
-        // 5. Audit log
-        await supabase.from("audit_logs").insert({
-          action: "auto_incident_start",
-          target_type: "incident",
-          target_id: incident.id,
-          metadata: { menu_type: rule.menu_type, entry_key: entry.entryKey },
-        });
+        if (isTestMatch) {
+          await createIncidentAndNotify(supabase, entry, rule, "test");
+        }
       }
     }
   }
 
+  // --- 3. データのクリーンアップ (1週間以上前の不要なデータを削除) ---
+  await supabase.rpc("cleanup_old_jma_entries");
+
   return NextResponse.json({ ok: true, fetched: fetched.length, changed: changed.length });
+}
+
+async function createIncidentAndNotify(
+  supabase: any,
+  entry: AtomEntry,
+  rule: any,
+  mode: "production" | "test"
+) {
+  // Check for duplicate incident for this entry AND mode
+  const { data: existingIncident } = await supabase
+    .from("incidents")
+    .select("id")
+    .eq("jma_entry_key", entry.entryKey)
+    .eq("mode", mode)
+    .single();
+
+  if (existingIncident) return;
+
+  const { data: incident, error: incError } = await supabase
+    .from("incidents")
+    .insert({
+      status: "active",
+      menu_type: rule.menu_type,
+      jma_entry_key: entry.entryKey,
+      title: entry.title,
+      is_drill: mode === "test",
+      mode: mode,
+      slack_channel: rule.slack_channel ?? "dm",
+    })
+    .select()
+    .single();
+
+  if (incError || !incident) return;
+
+  // 詳細内容 (#text) を抽出
+  const raw = entry.raw as any;
+  const contentText = raw?.content?.['#text'] || raw?.headline?.['#text'] || "";
+
+  await sendNotification({
+    mode: mode,
+    text: [
+      (rule.template ?? "安否確認を開始します: {title}")
+        .replace("{title}", entry.title ?? "")
+        .replace("{content}", contentText),
+      "",
+      mode === "test" 
+        ? "【JMA連携試験】気象庁XMLを検知して自動発動しました。下記のボタンから回答してください。"
+        : "下記のボタンから回答してください。",
+    ].join("\n"),
+  });
+
+  await supabase.from("audit_logs").insert({
+    action: "auto_incident_start",
+    target_type: "incident",
+    target_id: incident.id,
+    metadata: { menu_type: rule.menu_type, entry_key: entry.entryKey, mode },
+  });
 }
 

@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
       menu_type: parsed.data.menu_type,
       title: parsed.data.title,
       is_drill: true,
+      mode: "drill",
       status: "active",
       slack_channel: "dm", // Defaulting to DM for this MVP
     })
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest) {
   // 4. Send Slack notification
   try {
     await sendNotification({
-      isDrill: true,
+      mode: "drill",
       text: [
         `安否確認訓練を開始します。`,
         `種別: ${parsed.data.menu_type}`,
