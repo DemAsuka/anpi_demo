@@ -192,14 +192,13 @@ export async function GET(request: NextRequest) {
     // --- Activation Logic ---
     const { data: rules } = await supabase
       .from("activation_menus")
-      .select("*")
-      .eq("enabled", true);
+      .select("*");
 
     for (const entry of changed) {
       for (const rule of rules ?? []) {
         // --- 1. Production Match ---
         const ruleKeywords = (rule.threshold as Record<string, any>)?.keywords ?? [];
-        const isProdMatch = ruleKeywords.length > 0 && ruleKeywords.some((k: string) => entry.title?.includes(k));
+        const isProdMatch = rule.enabled && ruleKeywords.length > 0 && ruleKeywords.some((k: string) => entry.title?.includes(k));
 
         if (isProdMatch) {
           await createIncidentAndNotify(supabase, entry, rule, "production");
@@ -255,10 +254,16 @@ async function createIncidentAndNotify(
 
   if (incError || !incident) return;
 
+  // 詳細内容 (#text) を抽出
+  const raw = entry.raw as any;
+  const contentText = raw?.content?.['#text'] || raw?.headline?.['#text'] || "";
+
   await sendNotification({
     mode: mode,
     text: [
-      (rule.template ?? "安否確認を開始します: {title}").replace("{title}", entry.title ?? ""),
+      (rule.template ?? "安否確認を開始します: {title}")
+        .replace("{title}", entry.title ?? "")
+        .replace("{content}", contentText),
       "",
       mode === "test" 
         ? "【JMA連携試験】気象庁XMLを検知して自動発動しました。下記のボタンから回答してください。"
