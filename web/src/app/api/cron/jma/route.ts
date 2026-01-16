@@ -322,12 +322,15 @@ async function createIncidentAndNotify(
     .replace("{target_summary}", "全国"); // 将来XML解析で対応
 
   const prefix = mode === "test" ? `【訓練：${rule.menu_type.toUpperCase()}】` : "";
+  const eventTime = entry.updated ? new Date(entry.updated).toLocaleString('ja-JP') : "不明";
 
   await sendNotification({
     mode: mode,
     text: [
       prefix,
       formattedText,
+      "",
+      `発表時刻: ${eventTime}`,
       "",
       mode === "test" 
         ? "※これはJMA連携試験による自動配信です。内容を確認し、問題なければ回答してください。"
