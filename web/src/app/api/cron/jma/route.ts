@@ -105,28 +105,45 @@ async function postSlackSummary(entries: AtomEntry[]) {
 }
 
 export async function GET(request: NextRequest) {
-  // 【一時的】不具合切り分けのため、認証を全許可
-  /*
+  // --- セキュリティ再構築：ステップ1（詳細な証拠の記録） ---
   const token =
     request.headers.get("x-cron-secret") ??
     request.nextUrl.searchParams.get("token") ??
     "";
   
-  const isVercelCron = request.headers.get("x-vercel-cron") === "1";
-  */
+  const vercelCronHeader = request.headers.get("x-vercel-cron");
+  const userAgent = request.headers.get("user-agent");
+  const isVercelCron = vercelCronHeader === "1";
+  
   const supabase = createSupabaseServiceRoleClient();
 
-  // デバッグ用: リクエストが届いたことを記録
+  // 判定ロジック：
+  // 1. 正しいトークンがある
+  // 2. または、Vercel Cronヘッダーが '1' である（デプロイ後の実機環境のみ）
+  const isAuthorized = token === env.CRON_SECRET() || isVercelCron;
+
+  // デバッグ用：どのような証拠でアクセスしてきたかを詳細に記録
   await supabase.from("system_status").upsert({
     id: "jma_receiver",
-    status: "ok",
+    status: isAuthorized ? "ok" : "error",
     metadata: {
       last_request_at: new Date().toISOString(),
-      auth_status: "disabled_for_debug",
-      status_detail: "processing"
+      auth_result: isAuthorized ? "success" : "failed",
+      evidence: {
+        has_valid_token: token === env.CRON_SECRET(),
+        received_token_preview: token ? (token.substring(0, 4) + "...") : "empty",
+        vercel_cron_header: vercelCronHeader,
+        is_vercel_cron: isVercelCron,
+        user_agent_preview: userAgent ? (userAgent.substring(0, 20) + "...") : "empty"
+      },
+      status_detail: isAuthorized ? "processing" : "blocked_by_auth"
     },
     updated_at: new Date().toISOString()
   });
+
+  if (!isAuthorized) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
 
   const fetched: AtomEntry[] = [];
   for (const feed of FEEDS) {
