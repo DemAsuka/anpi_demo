@@ -176,6 +176,27 @@ export async function GET(request: NextRequest) {
 
     const changed = fetched.filter((e) => existing.get(e.entryKey) !== e.contentHash);
 
+    // --- 強制通知テスト: 変更があった場合、最初の1件を強制的に通知する ---
+    if (changed.length > 0) {
+      const testEntry = changed[0];
+      console.log("TEST: Forcing notification for:", testEntry.title);
+      
+      const { data: menu } = await supabase
+        .from("activation_menus")
+        .select("*")
+        .limit(1)
+        .single();
+
+      if (menu) {
+        // 直接通知を飛ばす
+        await sendNotification({
+          mode: "test",
+          text: `【強制疎通テスト】\nデータ受信に成功しました。\nタイトル: ${testEntry.title}\n受信時刻: ${new Date().toLocaleString('ja-JP')}\n\nこのメッセージが届いていれば、システムとSlackの連携は正常です。`,
+        });
+      }
+    }
+    // --- テストコードここまで ---
+
     // --- ステータス更新 & 復旧通知ロジック ---
     const { data: prevStatus } = await supabase
       .from("system_status")
