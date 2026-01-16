@@ -110,16 +110,19 @@ export async function GET(request: NextRequest) {
     request.nextUrl.searchParams.get("token") ??
     "";
   
+  const isVercelCron = request.headers.get("x-vercel-cron") === "1";
   const supabase = createSupabaseServiceRoleClient();
 
-  if (token !== env.CRON_SECRET()) {
+  // 認証チェック: 正しいトークンがあるか、または Vercel 自身の Cron 実行であること
+  if (token !== env.CRON_SECRET() && !isVercelCron) {
     // --- デバッグ用: 認証失敗を記録 ---
     await supabase.from("system_status").upsert({
       id: "jma_receiver",
       status: "error",
       metadata: {
         last_auth_failure_at: new Date().toISOString(),
-        received_token_preview: token.substring(0, 4) + "...",
+        received_token_preview: token ? (token.substring(0, 4) + "...") : "empty",
+        is_vercel_cron_header: isVercelCron,
         error_detail: "unauthorized"
       },
       updated_at: new Date().toISOString()
@@ -134,6 +137,7 @@ export async function GET(request: NextRequest) {
     status: "ok",
     metadata: {
       last_request_at: new Date().toISOString(),
+      triggered_by: isVercelCron ? "vercel-cron" : "token-auth",
       status_detail: "processing"
     },
     updated_at: new Date().toISOString()
