@@ -321,15 +321,18 @@ async function createIncidentAndNotify(
     .replace("{max_shindo}", "確認中") // 将来XML解析で対応
     .replace("{target_summary}", "全国"); // 将来XML解析で対応
 
+  const prefix = mode === "test" ? `【訓練：${rule.menu_type.toUpperCase()}】` : "";
+
   await sendNotification({
     mode: mode,
     text: [
+      prefix,
       formattedText,
       "",
       mode === "test" 
         ? "※これはJMA連携試験による自動配信です。内容を確認し、問題なければ回答してください。"
         : "上記の内容を確認し、速やかに回答してください。",
-    ].join("\n"),
+    ].filter(Boolean).join("\n"),
   });
 
   await supabase.from("audit_logs").insert({
