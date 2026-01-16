@@ -109,11 +109,35 @@ export async function GET(request: NextRequest) {
     request.headers.get("x-cron-secret") ??
     request.nextUrl.searchParams.get("token") ??
     "";
+  
+  const supabase = createSupabaseServiceRoleClient();
+
   if (token !== env.CRON_SECRET()) {
+    // --- デバッグ用: 認証失敗を記録 ---
+    await supabase.from("system_status").upsert({
+      id: "jma_receiver",
+      status: "error",
+      metadata: {
+        last_auth_failure_at: new Date().toISOString(),
+        received_token_preview: token.substring(0, 4) + "...",
+        error_detail: "unauthorized"
+      },
+      updated_at: new Date().toISOString()
+    });
+
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  const supabase = createSupabaseServiceRoleClient();
+  // --- デバッグ用: リクエストが届いたことを記録 ---
+  await supabase.from("system_status").upsert({
+    id: "jma_receiver",
+    status: "ok",
+    metadata: {
+      last_request_at: new Date().toISOString(),
+      status_detail: "processing"
+    },
+    updated_at: new Date().toISOString()
+  });
 
   const fetched: AtomEntry[] = [];
   for (const feed of FEEDS) {
@@ -143,27 +167,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const changed = fetched.filter((e) => existing.get(e.entryKey) !== e.contentHash);
-
-  if (changed.length) {
-    const { error } = await supabase.from("jma_entries").upsert(
-      changed.map((e) => ({
-        entry_key: e.entryKey,
-        source_feed: e.sourceFeed,
-        title: e.title,
-        updated_at: e.updated ? new Date(e.updated).toISOString() : null,
-        link: e.link,
-        content_hash: e.contentHash,
-        raw_atom: e.raw,
-      })),
-      { onConflict: "entry_key" },
-    );
-    if (error) {
-      return NextResponse.json(
-        { ok: false, error: "db_error", details: error.message },
-        { status: 500 },
-      );
-    }
+    const changed = fetched.filter((e) => existing.get(e.entryKey) !== e.contentHash);
 
     // --- ステータス更新 & 復旧通知ロジック ---
     const { data: prevStatus } = await supabase
@@ -189,32 +193,75 @@ export async function GET(request: NextRequest) {
         updated_at: new Date().toISOString()
       });
 
-    // --- Activation Logic ---
-    const { data: rules } = await supabase
-      .from("activation_menus")
-      .select("*");
-
-    for (const entry of changed) {
-      for (const rule of rules ?? []) {
-        // --- 1. Production Match ---
-        const ruleKeywords = (rule.threshold as Record<string, any>)?.keywords ?? [];
-        const isProdMatch = rule.enabled && ruleKeywords.length > 0 && ruleKeywords.some((k: string) => entry.title?.includes(k));
-
-        if (isProdMatch) {
-          await createIncidentAndNotify(supabase, entry, rule, "production");
-          continue; // Prioritize production alert
+    if (changed.length) {
+      // --- 1. まず変更があったエントリをすべてDBに保存する ---
+      // (チャンク分けして保存)
+      const chunkSize = 50;
+      for (let i = 0; i < changed.length; i += chunkSize) {
+        const chunk = changed.slice(i, i + chunkSize);
+        const { error: upsertError } = await supabase.from("jma_entries").upsert(
+          chunk.map((e) => ({
+            entry_key: e.entryKey,
+            source_feed: e.sourceFeed,
+            title: e.title,
+            updated_at: e.updated ? new Date(e.updated).toISOString() : null,
+            link: e.link,
+            content_hash: e.contentHash,
+            raw_atom: e.raw,
+          })),
+          { onConflict: "entry_key" },
+        );
+        if (upsertError) {
+          console.error("Failed to upsert jma_entries chunk:", upsertError.message);
         }
+      }
 
-        // --- 2. Test Match ---
-        const testKeywords = (rule.test_threshold as Record<string, any>)?.keywords ?? [];
-        const isTestMatch = rule.test_enabled && testKeywords.length > 0 && testKeywords.some((k: string) => entry.title?.includes(k));
+      // --- 2. Activation Logic ---
+      const { data: rules } = await supabase
+        .from("activation_menus")
+        .select("*");
 
-        if (isTestMatch) {
-          await createIncidentAndNotify(supabase, entry, rule, "test");
+      // 大量のエントリがある場合（初回同期時など）に大量の通知が飛ばないよう、
+      // 判定対象を最新の数件（例：10件）に制限する
+      const entriesToProcess = changed
+        .sort((a, b) => {
+          const ta = a.updated ? new Date(a.updated).getTime() : 0;
+          const tb = b.updated ? new Date(b.updated).getTime() : 0;
+          return tb - ta;
+        })
+        .slice(0, 10);
+
+      for (const entry of entriesToProcess) {
+        // 詳細内容 (content or headline) を抽出
+        const raw = entry.raw as any;
+        const contentText = raw?.content?.['#text'] || raw?.headline?.['#text'] || "";
+        const searchTarget = `${entry.title ?? ""} ${contentText}`;
+
+        for (const rule of rules ?? []) {
+          // 判定を効率化するため、キーワードがない場合はスキップ
+          const ruleKeywords = (rule.threshold as Record<string, any>)?.keywords ?? [];
+          const testKeywords = (rule.test_threshold as Record<string, any>)?.keywords ?? [];
+          
+          if (!rule.enabled && !rule.test_enabled) continue;
+
+          // --- 1. Production Match ---
+          const isProdMatch = rule.enabled && ruleKeywords.length > 0 && ruleKeywords.some((k: string) => searchTarget.includes(k));
+
+          if (isProdMatch) {
+            await createIncidentAndNotify(supabase, entry, rule, "production");
+            // 本番通知をした場合は試験通知はスキップ（ノイズ抑制）
+            continue;
+          }
+
+          // --- 2. Test Match ---
+          const isTestMatch = rule.test_enabled && testKeywords.length > 0 && testKeywords.some((k: string) => searchTarget.includes(k));
+
+          if (isTestMatch) {
+            await createIncidentAndNotify(supabase, entry, rule, "test");
+          }
         }
       }
     }
-  }
 
   // --- 3. データのクリーンアップ (1週間以上前の不要なデータを削除) ---
   await supabase.rpc("cleanup_old_jma_entries");
@@ -258,16 +305,23 @@ async function createIncidentAndNotify(
   const raw = entry.raw as any;
   const contentText = raw?.content?.['#text'] || raw?.headline?.['#text'] || "";
 
+  // テンプレート内のプレースホルダーを置換
+  // \n を実際の改行に変換し、各項目を埋める
+  const formattedText = (rule.template ?? "安否確認を開始します: {title}")
+    .replace(/\\n/g, "\n")
+    .replace("{title}", entry.title ?? "")
+    .replace("{content}", contentText)
+    .replace("{max_shindo}", "確認中") // 将来XML解析で対応
+    .replace("{target_summary}", "全国"); // 将来XML解析で対応
+
   await sendNotification({
     mode: mode,
     text: [
-      (rule.template ?? "安否確認を開始します: {title}")
-        .replace("{title}", entry.title ?? "")
-        .replace("{content}", contentText),
+      formattedText,
       "",
       mode === "test" 
-        ? "【JMA連携試験】気象庁XMLを検知して自動発動しました。下記のボタンから回答してください。"
-        : "下記のボタンから回答してください。",
+        ? "※これはJMA連携試験による自動配信です。内容を確認し、問題なければ回答してください。"
+        : "上記の内容を確認し、速やかに回答してください。",
     ].join("\n"),
   });
 
