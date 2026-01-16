@@ -113,13 +113,14 @@ export async function GET(request: NextRequest) {
   
   const vercelCronHeader = request.headers.get("x-vercel-cron");
   const userAgent = request.headers.get("user-agent");
-  const isVercelCron = vercelCronHeader === "1";
+  // 精密な分析結果に基づき、User-Agentも判定に含める
+  const isVercelCron = vercelCronHeader === "1" || userAgent?.startsWith("vercel-cron/");
   
   const supabase = createSupabaseServiceRoleClient();
 
   // 判定ロジック：
   // 1. 正しいトークンがある
-  // 2. または、Vercel Cronヘッダーが '1' である（デプロイ後の実機環境のみ）
+  // 2. または、Vercel Cronの証拠（ヘッダーまたはUser-Agent）がある
   const isAuthorized = token === env.CRON_SECRET() || isVercelCron;
 
   // デバッグ用：どのような証拠でアクセスしてきたかを詳細に記録
