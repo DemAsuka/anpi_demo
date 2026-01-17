@@ -322,7 +322,9 @@ async function createIncidentAndNotify(
     .replace("{target_summary}", "全国"); // 将来XML解析で対応
 
   const prefix = mode === "test" ? `【訓練：${rule.menu_type.toUpperCase()}】` : "";
-  const eventTime = entry.updated ? new Date(entry.updated).toLocaleString('ja-JP') : "不明";
+  const eventTime = entry.updated 
+    ? new Date(entry.updated).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) 
+    : "不明";
 
   await sendNotification({
     mode: mode,
