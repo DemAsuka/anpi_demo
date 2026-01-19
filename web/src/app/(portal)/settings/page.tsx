@@ -2,6 +2,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service";
 import { LocationSettings } from "./_components/LocationSettings";
+import { ProfileSettings } from "./_components/ProfileSettings";
 
 export default async function SettingsPage({
   searchParams,
@@ -115,6 +116,13 @@ export default async function SettingsPage({
               <label className="text-xs font-black text-gray-400 uppercase tracking-wider">メインメールアドレス（ログイン用）</label>
               <p className="text-lg font-bold text-gray-900">{primaryEmail || "未設定"}</p>
             </div>
+          </div>
+
+          <div className="border-t border-gray-50 pt-8">
+            <h3 className="text-sm font-black text-gray-900 flex items-center gap-2 mb-4">
+              🆔 アプリケーション設定
+            </h3>
+            <ProfileSettings initialProfile={profile as any} />
           </div>
 
           <div className="border-t border-gray-50 pt-8 space-y-6">

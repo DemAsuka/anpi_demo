@@ -12,6 +12,8 @@ type Location = {
   city: string;
   jma_code?: string;
   jma_name?: string;
+  jma_area_name?: string;
+  jma_area_code?: string;
   sort_order: number;
 };
 
@@ -22,6 +24,8 @@ type SystemLocation = {
   city: string;
   jma_code?: string;
   jma_name?: string;
+  jma_area_name?: string;
+  jma_area_code?: string;
   is_permanent: boolean;
   target_group: string;
   sort_order: number;
@@ -55,7 +59,9 @@ export function LocationSettings({
     prefecture: "未設定",
     city: "",
     jma_code: "",
-    jma_name: ""
+    jma_name: "",
+    jma_area_name: "",
+    jma_area_code: ""
   });
 
   const [newSysLoc, setNewSysLoc] = useState({
@@ -64,6 +70,8 @@ export function LocationSettings({
     city: "",
     jma_code: "",
     jma_name: "",
+    jma_area_name: "",
+    jma_area_code: "",
     target_group: "all",
     is_permanent: false
   });
@@ -90,6 +98,8 @@ export function LocationSettings({
         city: newLoc.jma_name,
         jma_code: newLoc.jma_code,
         jma_name: newLoc.jma_name,
+        jma_area_name: newLoc.jma_area_name,
+        jma_area_code: newLoc.jma_area_code,
         sort_order: nextOrder
       })
       .select()
@@ -123,6 +133,8 @@ export function LocationSettings({
           city: newSysLoc.jma_name,
           jma_code: newSysLoc.jma_code,
           jma_name: newSysLoc.jma_name,
+          jma_area_name: newSysLoc.jma_area_name,
+          jma_area_code: newSysLoc.jma_area_code,
           target_group: newSysLoc.target_group,
           is_permanent: newSysLoc.is_permanent
         })
@@ -291,9 +303,15 @@ export function LocationSettings({
                   value={newSysLoc.jma_code}
                   onChange={e => {
                     const prefData = locationMaster.find(p => p.pref === newSysLoc.prefecture);
-                    const cityData = prefData?.cities.find(c => c.code === e.target.value);
+                    const cityData = prefData?.cities.find((c: any) => c.code === e.target.value);
                     if (cityData) {
-                      setNewSysLoc({...newSysLoc, jma_code: cityData.code, jma_name: cityData.name});
+                      setNewSysLoc({
+                        ...newSysLoc, 
+                        jma_code: cityData.code, 
+                        jma_name: cityData.name,
+                        jma_area_name: (cityData as any).area_name,
+                        jma_area_code: (cityData as any).area_code
+                      });
                     }
                   }}
                   disabled={newSysLoc.prefecture === "未設定"}
@@ -308,13 +326,22 @@ export function LocationSettings({
             </div>
 
             {newSysLoc.jma_name && (
-              <div className="bg-red-50 rounded-2xl p-4 flex items-center gap-3">
-                <span className="text-xl">📡</span>
-                <div>
-                  <div className="text-[10px] font-black text-red-400 uppercase tracking-wider">該当JMA判定地点</div>
-                  <div className="text-sm font-black text-red-600">{newSysLoc.jma_name} ({newSysLoc.jma_code})</div>
-                  <div className="text-[10px] text-red-400 mt-1">※全社共通の通知地点として設定されます。</div>
+              <div className="bg-red-50 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">📡</span>
+                  <div>
+                    <div className="text-[10px] font-black text-red-400 uppercase tracking-wider">該当JMA判定地点（地震用）</div>
+                    <div className="text-sm font-black text-red-600">{newSysLoc.jma_name} ({newSysLoc.jma_code})</div>
+                  </div>
                 </div>
+                {newSysLoc.jma_area_name && (
+                  <div className="flex items-center gap-3 ml-8 pt-2 border-t border-red-100">
+                    <div>
+                      <div className="text-[10px] font-black text-red-400 uppercase tracking-wider">監視エリア（警報用）</div>
+                      <div className="text-sm font-black text-red-500">{newSysLoc.jma_area_name}</div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <div className="flex justify-end gap-3 pt-4">
@@ -414,9 +441,15 @@ export function LocationSettings({
                   value={newLoc.jma_code}
                   onChange={e => {
                     const prefData = locationMaster.find(p => p.pref === newLoc.prefecture);
-                    const cityData = prefData?.cities.find(c => c.code === e.target.value);
+                    const cityData = prefData?.cities.find((c: any) => c.code === e.target.value);
                     if (cityData) {
-                      setNewLoc({...newLoc, jma_code: cityData.code, jma_name: cityData.name});
+                      setNewLoc({
+                        ...newLoc, 
+                        jma_code: cityData.code, 
+                        jma_name: cityData.name,
+                        jma_area_name: (cityData as any).area_name,
+                        jma_area_code: (cityData as any).area_code
+                      });
                     }
                   }}
                   disabled={newLoc.prefecture === "未設定"}
@@ -431,13 +464,22 @@ export function LocationSettings({
             </div>
 
             {newLoc.jma_name && (
-              <div className="bg-blue-50 rounded-2xl p-4 flex items-center gap-3">
-                <span className="text-xl">📡</span>
-                <div>
-                  <div className="text-[10px] font-black text-blue-400 uppercase tracking-wider">該当JMA判定地点</div>
-                  <div className="text-sm font-black text-blue-600">{newLoc.jma_name} ({newLoc.jma_code})</div>
-                  <div className="text-[10px] text-blue-400 mt-1">※この地点名を含む地震情報が発表された際に通知が送信されます。</div>
+              <div className="bg-blue-50 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">📡</span>
+                  <div>
+                    <div className="text-[10px] font-black text-blue-400 uppercase tracking-wider">該当JMA判定地点（地震用）</div>
+                    <div className="text-sm font-black text-blue-600">{newLoc.jma_name} ({newLoc.jma_code})</div>
+                  </div>
                 </div>
+                {newLoc.jma_area_name && (
+                  <div className="flex items-center gap-3 ml-8 pt-2 border-t border-blue-100">
+                    <div>
+                      <div className="text-[10px] font-black text-blue-400 uppercase tracking-wider">監視エリア（警報用）</div>
+                      <div className="text-sm font-black text-blue-500">{newLoc.jma_area_name}</div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <div className="flex justify-end gap-3 pt-4">

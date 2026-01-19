@@ -11,6 +11,8 @@ type SystemLocation = {
   city: string;
   jma_code?: string;
   jma_name?: string;
+  jma_area_name?: string;
+  jma_area_code?: string;
   is_permanent: boolean;
   valid_until: string | null;
 };
@@ -113,12 +115,14 @@ export function SystemLocationEditor({ initialLocations }: { initialLocations: S
                   value={loc.jma_code || ""}
                   onChange={(e) => {
                     const prefData = locationMaster.find(p => p.pref === loc.prefecture);
-                    const cityData = prefData?.cities.find(c => c.code === e.target.value);
+                    const cityData = prefData?.cities.find((c: any) => c.code === e.target.value);
                     if (cityData) {
                       handleUpdate(loc.id, { 
                         city: cityData.name, 
                         jma_code: cityData.code, 
-                        jma_name: cityData.name 
+                        jma_name: cityData.name,
+                        jma_area_name: (cityData as any).area_name,
+                        jma_area_code: (cityData as any).area_code
                       });
                     }
                   }}
@@ -134,13 +138,23 @@ export function SystemLocationEditor({ initialLocations }: { initialLocations: S
             </div>
 
             {loc.jma_name && (
-              <div className="bg-blue-50 rounded-2xl p-4 flex items-center gap-3">
-                <span className="text-xl">📡</span>
-                <div>
-                  <div className="text-[10px] font-black text-blue-400 uppercase tracking-wider">該当JMA判定地点</div>
-                  <div className="text-sm font-black text-blue-600">{loc.jma_name} ({loc.jma_code})</div>
-                  <div className="text-[10px] text-blue-400 mt-1">※この地点名を含む地震情報が発表された際に通知が送信されます。</div>
+              <div className="bg-blue-50 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">📡</span>
+                  <div>
+                    <div className="text-[10px] font-black text-blue-400 uppercase tracking-wider">該当JMA判定地点（地震用）</div>
+                    <div className="text-sm font-black text-blue-600">{loc.jma_name} ({loc.jma_code})</div>
+                  </div>
                 </div>
+                {loc.jma_area_name && (
+                  <div className="flex items-center gap-3 ml-8 pt-2 border-t border-blue-100">
+                    <div>
+                      <div className="text-[10px] font-black text-blue-400 uppercase tracking-wider">監視エリア（警報用）</div>
+                      <div className="text-sm font-black text-blue-500">{loc.jma_area_name}</div>
+                    </div>
+                  </div>
+                )}
+                <div className="text-[10px] text-blue-400 ml-8">※地震は市区町村単位、警報は広域エリア単位で監視されます。</div>
               </div>
             )}
 

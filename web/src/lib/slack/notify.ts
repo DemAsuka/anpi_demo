@@ -99,8 +99,9 @@ export async function sendNotification(params: {
   forceDemoPrefix?: boolean;
   isDrill?: boolean;
   mode?: NotificationMode;
+  mentions?: string[];
 }) {
-  console.log("Slack Notification Request:", { mode: params.mode, text: params.text });
+  console.log("Slack Notification Request:", { mode: params.mode, text: params.text, mentions: params.mentions });
   let modePrefix = "";
   const mode = params.mode || (params.isDrill ? "drill" : "production");
 
@@ -118,7 +119,13 @@ export async function sendNotification(params: {
   }
 
   const demoPrefix = params.forceDemoPrefix || env.DEMO_MODE() ? "[DEMO] " : "";
-  const text = `${modePrefix}${demoPrefix}${params.text}`;
+  
+  // メンションの組み立て
+  const mentionText = params.mentions && params.mentions.length > 0 
+    ? params.mentions.join(" ") + "\n" 
+    : "";
+
+  const text = `${modePrefix}${demoPrefix}\n${mentionText}${params.text}`;
 
   const botToken = env.SLACK_BOT_TOKEN();
   const dmUserId = env.SLACK_DM_USER_ID();

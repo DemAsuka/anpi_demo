@@ -51,27 +51,51 @@ export async function GET(request: NextRequest) {
     // 登録地点を取得
     const [{ data: sysLocs }, { data: userLocs }] = await Promise.all([
       supabase.from("system_locations").select("city, label"),
-      supabase.from("user_locations").select("city, display_name")
+      supabase.from("user_locations").select("city, display_name, user_id")
     ]);
 
-    const allRegistered = [
-      ...(sysLocs || []).map((l: any) => ({ city: l.city, label: l.label })),
-      ...(userLocs || []).map((l: any) => ({ city: l.city, label: l.display_name }))
+    const matchedSys = (sysLocs || []).filter(reg => {
+      return Array.from(citiesInXml).some(xmlCity => 
+        xmlCity.includes(reg.city) || reg.city.includes(xmlCity)
+      );
+    });
+
+    const matchedUsers = (userLocs || []).filter(reg => {
+      return Array.from(citiesInXml).some(xmlCity => 
+        xmlCity.includes(reg.city) || reg.city.includes(xmlCity)
+      );
+    });
+
+    matchedLocations = [
+      ...matchedSys.map(l => `${l.label}(${l.city})`),
+      ...matchedUsers.map(l => `${l.display_name}(${l.city})`)
     ];
 
-    matchedLocations = allRegistered
-      .filter(reg => {
-        // 部分一致判定
-        return Array.from(citiesInXml).some(xmlCity => 
-          xmlCity.includes(reg.city) || reg.city.includes(xmlCity)
-        );
-      })
-      .map(reg => `${reg.label}(${reg.city})`);
-
     if (matchedLocations.length > 0) {
+      // メンション先の決定
+      const mentionList: string[] = [];
+      if (matchedSys.length > 0) {
+        mentionList.push("<!here>");
+      } else if (matchedUsers.length > 0) {
+        const userIds = Array.from(new Set(matchedUsers.map(l => l.user_id)));
+        const { data: profileList } = await supabase
+          .from("profiles")
+          .select("slack_user_id")
+          .in("id", userIds);
+        
+        if (profileList) {
+          for (const p of profileList) {
+            if (p.slack_user_id) {
+              mentionList.push(`<@${p.slack_user_id}>`);
+            }
+          }
+        }
+      }
+
       // マッチした場合のみ通知
       await sendNotification({
         mode: "test",
+        mentions: mentionList.length > 0 ? mentionList : undefined,
         text: [
           `【デモ：地点マッチング試験】`,
           `*対象の登録地点：${matchedLocations.join("、")}*`,
@@ -80,12 +104,12 @@ export async function GET(request: NextRequest) {
           `（M5.0 / 深さ：10km）`,
           "",
           `内容：シミュレーションにより ${city} での揺れを検知しました。`,
-          `このメッセージが届いていれば、地点フィルタリングは正常に動作しています。`,
+          `このメッセージが届いていれば、地点フィルタリングとメンション機能は正常に動作しています。`,
           "",
           `発表時刻: ${new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}`,
         ].join("\n"),
       });
-      results.push({ city, status: "notification_sent", matched: matchedLocations });
+      results.push({ city, status: "notification_sent", matched: matchedLocations, mentions: mentionList });
     } else {
       results.push({ city, status: "skipped_no_match" });
     }

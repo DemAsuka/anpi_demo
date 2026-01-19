@@ -344,12 +344,16 @@ async function createIncidentAndNotify(
 
         // 地点マッチング
         const cities = new Set<string>();
+        const areasInXml = new Set<string>();
         const prefs = asUnknownArray(body.Intensity?.Observation?.Pref);
         for (const pref of prefs) {
           if (!isRecord(pref)) continue;
           const areas = asUnknownArray(pref.Area);
           for (const area of areas) {
             if (!isRecord(area)) continue;
+            if (area.Name) {
+              areasInXml.add(asString(area.Name) || "");
+            }
             const cityNodes = asUnknownArray(area.City);
             for (const city of cityNodes) {
               if (isRecord(city) && city.Name) {
@@ -361,24 +365,60 @@ async function createIncidentAndNotify(
 
         // 登録地点（システム・ユーザー）を取得
         const [{ data: sysLocs }, { data: userLocs }] = await Promise.all([
-          supabase.from("system_locations").select("city, label"),
-          supabase.from("user_locations").select("city, display_name")
+          supabase.from("system_locations").select("city, label, jma_area_name"),
+          supabase.from("user_locations").select("city, display_name, user_id, jma_area_name")
         ]);
 
-        const allRegistered = [
-          ...(sysLocs || []).map((l: any) => ({ city: l.city, label: l.label })),
-          ...(userLocs || []).map((l: any) => ({ city: l.city, label: l.display_name }))
+        const isEarthquake = rule.menu_type === "earthquake";
+
+        const matchedSys = (sysLocs || []).filter(reg => {
+          // 地震の場合は市区町村レベルでチェック
+          const cityMatch = Array.from(cities).some(xmlCity => 
+            xmlCity.includes(reg.city) || reg.city.includes(xmlCity)
+          );
+          if (isEarthquake) return cityMatch;
+          
+          // 警報などの場合はエリアレベル（細分区域）でもチェック
+          const areaMatch = reg.jma_area_name && areasInXml.has(reg.jma_area_name);
+          return cityMatch || areaMatch;
+        });
+
+        const matchedUsers = (userLocs || []).filter(reg => {
+          const cityMatch = Array.from(cities).some(xmlCity => 
+            xmlCity.includes(reg.city) || reg.city.includes(xmlCity)
+          );
+          if (isEarthquake) return cityMatch;
+
+          const areaMatch = reg.jma_area_name && areasInXml.has(reg.jma_area_name);
+          return cityMatch || areaMatch;
+        });
+
+        matchedLocations = [
+          ...matchedSys.map(l => `${l.label}(${l.city})`),
+          ...matchedUsers.map(l => `${l.display_name}(${l.city})`)
         ];
 
-        matchedLocations = allRegistered
-          .filter(reg => {
-            // 登録地点名がXMLの地点リストのいずれかに含まれているか、
-            // あるいはXMLの地点名が登録地点名に含まれているか（例：「仙台市」と「宮城県仙台市」）
-            return Array.from(cities).some(xmlCity => 
-              xmlCity.includes(reg.city) || reg.city.includes(xmlCity)
-            );
-          })
-          .map(reg => `${reg.label}(${reg.city})`);
+        // メンション先の決定
+        const mentionList: string[] = [];
+        if (matchedSys.length > 0) {
+          // 全社共通の地点が含まれる場合は全社員メンション
+          mentionList.push("<!here>");
+        } else if (matchedUsers.length > 0) {
+          // ユーザー個別の地点のみの場合は該当ユーザーのみメンション
+          const userIds = Array.from(new Set(matchedUsers.map(l => l.user_id)));
+          const { data: profileList } = await supabase
+            .from("profiles")
+            .select("slack_user_id")
+            .in("id", userIds);
+          
+          if (profileList) {
+            for (const p of profileList) {
+              if (p.slack_user_id) {
+                mentionList.push(`<@${p.slack_user_id}>`);
+              }
+            }
+          }
+        }
       }
     }
   } catch (e) {
@@ -410,8 +450,12 @@ async function createIncidentAndNotify(
     ? new Date(entry.updated).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) 
     : "不明";
 
+  // メンション先がある場合、メッセージの先頭に追加
+  const mentions = mentionList.length > 0 ? mentionList : undefined;
+
   await sendNotification({
     mode: mode,
+    mentions: mentions,
     text: [
       prefix,
       `*対象の登録地点：${matchedLocations.join("、")}*`,
