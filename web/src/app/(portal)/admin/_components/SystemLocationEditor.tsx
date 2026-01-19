@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import locationMaster from "@/lib/jma/location-master.json";
 
 type SystemLocation = {
   id: string;
   label: string;
   prefecture: string;
   city: string;
+  jma_code?: string;
+  jma_name?: string;
   is_permanent: boolean;
   valid_until: string | null;
 };
@@ -40,6 +43,8 @@ export function SystemLocationEditor({ initialLocations }: { initialLocations: S
         label: "新規地点",
         prefecture: "未設定",
         city: "未設定",
+        jma_code: "",
+        jma_name: "",
         is_permanent: false
       })
       .select()
@@ -91,23 +96,53 @@ export function SystemLocationEditor({ initialLocations }: { initialLocations: S
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <label className="text-xs font-black text-gray-400 uppercase tracking-wider">都道府県</label>
-                <input
-                  type="text"
+                <select
                   value={loc.prefecture}
-                  onChange={(e) => handleUpdate(loc.id, { prefecture: e.target.value })}
+                  onChange={(e) => handleUpdate(loc.id, { prefecture: e.target.value, city: "未選択", jma_code: "", jma_name: "" })}
                   className="w-full bg-gray-50 rounded-xl px-4 py-3 font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500/20"
-                />
+                >
+                  <option value="未設定">選択してください</option>
+                  {locationMaster.map(p => (
+                    <option key={p.pref} value={p.pref}>{p.pref}</option>
+                  ))}
+                </select>
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-black text-gray-400 uppercase tracking-wider">市区町村</label>
-                <input
-                  type="text"
-                  value={loc.city}
-                  onChange={(e) => handleUpdate(loc.id, { city: e.target.value })}
+                <select
+                  value={loc.jma_code || ""}
+                  onChange={(e) => {
+                    const prefData = locationMaster.find(p => p.pref === loc.prefecture);
+                    const cityData = prefData?.cities.find(c => c.code === e.target.value);
+                    if (cityData) {
+                      handleUpdate(loc.id, { 
+                        city: cityData.name, 
+                        jma_code: cityData.code, 
+                        jma_name: cityData.name 
+                      });
+                    }
+                  }}
                   className="w-full bg-gray-50 rounded-xl px-4 py-3 font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500/20"
-                />
+                  disabled={loc.prefecture === "未設定"}
+                >
+                  <option value="">市区町村を選択してください</option>
+                  {locationMaster.find(p => p.pref === loc.prefecture)?.cities.map(c => (
+                    <option key={c.code} value={c.code}>{c.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
+
+            {loc.jma_name && (
+              <div className="bg-blue-50 rounded-2xl p-4 flex items-center gap-3">
+                <span className="text-xl">📡</span>
+                <div>
+                  <div className="text-[10px] font-black text-blue-400 uppercase tracking-wider">該当JMA判定地点</div>
+                  <div className="text-sm font-black text-blue-600">{loc.jma_name} ({loc.jma_code})</div>
+                  <div className="text-[10px] text-blue-400 mt-1">※この地点名を含む地震情報が発表された際に通知が送信されます。</div>
+                </div>
+              </div>
+            )}
 
             {!loc.is_permanent && (
               <div className="space-y-2">

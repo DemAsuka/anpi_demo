@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import locationMaster from "@/lib/jma/location-master.json";
 
 type Location = {
   id: string;
@@ -9,6 +10,8 @@ type Location = {
   display_name: string;
   prefecture: string;
   city: string;
+  jma_code?: string;
+  jma_name?: string;
   sort_order: number;
 };
 
@@ -17,6 +20,8 @@ type SystemLocation = {
   label: string;
   prefecture: string;
   city: string;
+  jma_code?: string;
+  jma_name?: string;
   is_permanent: boolean;
   target_group: string;
   sort_order: number;
@@ -47,7 +52,10 @@ export function LocationSettings({
   const [newLoc, setNewLoc] = useState({
     location_type: "parents",
     display_name: "",
-    address: ""
+    prefecture: "未設定",
+    city: "",
+    jma_code: "",
+    jma_name: ""
   });
 
   const [newSysLoc, setNewSysLoc] = useState({
@@ -60,8 +68,8 @@ export function LocationSettings({
   const supabase = createSupabaseBrowserClient();
 
   const handleAdd = async () => {
-    if (!newLoc.display_name || !newLoc.address) {
-      alert("すべての項目を入力してください。");
+    if (!newLoc.display_name || !newLoc.jma_code) {
+      alert("すべての項目を選択してください。");
       return;
     }
     setLoading(true);
@@ -75,7 +83,10 @@ export function LocationSettings({
         user_id: userId,
         location_type: newLoc.location_type,
         display_name: newLoc.display_name,
-        city: newLoc.address,
+        prefecture: newLoc.prefecture,
+        city: newLoc.jma_name,
+        jma_code: newLoc.jma_code,
+        jma_name: newLoc.jma_name,
         sort_order: nextOrder
       })
       .select()
@@ -84,7 +95,7 @@ export function LocationSettings({
     if (!error && data) {
       setLocations([...locations, data]);
       setIsAdding(false);
-      setNewLoc({ location_type: "parents", display_name: "", address: "" });
+      setNewLoc({ location_type: "parents", display_name: "", prefecture: "未設定", city: "", jma_code: "", jma_name: "" });
     } else {
       console.error("Supabase error:", error);
       alert("個人の地点登録に失敗しました。");
@@ -330,7 +341,7 @@ export function LocationSettings({
                   onChange={e => setNewLoc({...newLoc, location_type: e.target.value})}
                   className="w-full bg-white border-2 border-gray-100 rounded-xl px-4 py-2 font-bold focus:border-blue-500 outline-none transition-colors"
                 >
-                  {LOCATION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  {LOCATION_TYPES.map(t => <option key={t.value} value={t.label}>{t.label}</option>)}
                 </select>
               </div>
               <div className="space-y-2">
@@ -343,17 +354,49 @@ export function LocationSettings({
                   className="w-full bg-white border-2 border-gray-100 rounded-xl px-4 py-2 font-bold focus:border-blue-500 outline-none transition-colors"
                 />
               </div>
-              <div className="space-y-2 md:col-span-2">
-                <label className="text-xs font-black text-gray-400 uppercase tracking-wider">都道府県・市区町村（例：宮城県石巻市）</label>
-                <input 
-                  type="text"
-                  value={newLoc.address}
-                  onChange={e => setNewLoc({...newLoc, address: e.target.value})}
-                  placeholder="宮城県石巻市"
+              <div className="space-y-2">
+                <label className="text-xs font-black text-gray-400 uppercase tracking-wider">都道府県</label>
+                <select 
+                  value={newLoc.prefecture}
+                  onChange={e => setNewLoc({...newLoc, prefecture: e.target.value, jma_code: "", jma_name: ""})}
                   className="w-full bg-white border-2 border-gray-100 rounded-xl px-4 py-2 font-bold focus:border-blue-500 outline-none transition-colors"
-                />
+                >
+                  <option value="未設定">都道府県を選択</option>
+                  {locationMaster.map(p => <option key={p.pref} value={p.pref}>{p.pref}</option>)}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-black text-gray-400 uppercase tracking-wider">市区町村</label>
+                <select 
+                  value={newLoc.jma_code}
+                  onChange={e => {
+                    const prefData = locationMaster.find(p => p.pref === newLoc.prefecture);
+                    const cityData = prefData?.cities.find(c => c.code === e.target.value);
+                    if (cityData) {
+                      setNewLoc({...newLoc, jma_code: cityData.code, jma_name: cityData.name});
+                    }
+                  }}
+                  disabled={newLoc.prefecture === "未設定"}
+                  className="w-full bg-white border-2 border-gray-100 rounded-xl px-4 py-2 font-bold focus:border-blue-500 outline-none transition-colors"
+                >
+                  <option value="">市区町村を選択</option>
+                  {locationMaster.find(p => p.pref === newLoc.prefecture)?.cities.map(c => (
+                    <option key={c.code} value={c.code}>{c.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
+
+            {newLoc.jma_name && (
+              <div className="bg-blue-50 rounded-2xl p-4 flex items-center gap-3">
+                <span className="text-xl">📡</span>
+                <div>
+                  <div className="text-[10px] font-black text-blue-400 uppercase tracking-wider">該当JMA判定地点</div>
+                  <div className="text-sm font-black text-blue-600">{newLoc.jma_name} ({newLoc.jma_code})</div>
+                  <div className="text-[10px] text-blue-400 mt-1">※この地点名を含む地震情報が発表された際に通知が送信されます。</div>
+                </div>
+              </div>
+            )}
             <div className="flex justify-end gap-3 pt-4">
               <button 
                 onClick={() => setIsAdding(false)}
