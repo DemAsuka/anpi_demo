@@ -55,8 +55,8 @@ export async function GET(request: NextRequest) {
     ]);
 
     const allRegistered = [
-      ...(sysLocs || []).map(l => ({ city: l.city, label: l.label })),
-      ...(userLocs || []).map(l => ({ city: l.city, label: l.display_name }))
+      ...(sysLocs || []).map((l: any) => ({ city: l.city, label: l.label })),
+      ...(userLocs || []).map((l: any) => ({ city: l.city, label: l.display_name }))
     ];
 
     matchedLocations = allRegistered
