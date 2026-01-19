@@ -371,7 +371,13 @@ async function createIncidentAndNotify(
         ];
 
         matchedLocations = allRegistered
-          .filter(reg => cities.has(reg.city))
+          .filter(reg => {
+            // 登録地点名がXMLの地点リストのいずれかに含まれているか、
+            // あるいはXMLの地点名が登録地点名に含まれているか（例：「仙台市」と「宮城県仙台市」）
+            return Array.from(cities).some(xmlCity => 
+              xmlCity.includes(reg.city) || reg.city.includes(xmlCity)
+            );
+          })
           .map(reg => `${reg.label}(${reg.city})`);
       }
     }

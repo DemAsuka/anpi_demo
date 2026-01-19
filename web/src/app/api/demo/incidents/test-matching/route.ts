@@ -60,7 +60,12 @@ export async function GET(request: NextRequest) {
     ];
 
     matchedLocations = allRegistered
-      .filter(reg => citiesInXml.has(reg.city))
+      .filter(reg => {
+        // 部分一致判定
+        return Array.from(citiesInXml).some(xmlCity => 
+          xmlCity.includes(reg.city) || reg.city.includes(xmlCity)
+        );
+      })
       .map(reg => `${reg.label}(${reg.city})`);
 
     if (matchedLocations.length > 0) {
