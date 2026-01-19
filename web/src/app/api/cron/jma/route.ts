@@ -308,6 +308,84 @@ async function createIncidentAndNotify(
 
   if (incError || !incident) return;
 
+  // XML解析用のデータを取得
+  let maxInt = "確認中";
+  let epicenter = "確認中";
+  let depth = "確認中";
+  let magnitude = "確認中";
+  let tsunamiText = "";
+  let matchedLocations: string[] = [];
+
+  try {
+    if (entry.link) {
+      const res = await fetch(entry.link);
+      const xml = await res.text();
+      const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
+      const doc = parser.parse(xml);
+      const body = doc?.Report?.Body;
+
+      if (body) {
+        // 最大震度
+        maxInt = body.Intensity?.Observation?.MaxInt || maxInt;
+        
+        // 震源地情報
+        const eq = body.Earthquake;
+        if (eq) {
+          epicenter = eq.Hypocenter?.Area?.Name || epicenter;
+          magnitude = eq["jmx_eb:Magnitude"]?.["#text"] || eq["jmx_eb:Magnitude"] || magnitude;
+          const coordDesc = eq.Hypocenter?.Area?.["jmx_eb:Coordinate"]?.["@_description"] || "";
+          if (coordDesc.includes("深さ")) {
+            depth = coordDesc.split("深さ")[1].trim();
+          }
+        }
+
+        // 津波情報
+        tsunamiText = body.Comments?.ForecastComment?.Text || "";
+
+        // 地点マッチング
+        const cities = new Set<string>();
+        const prefs = asUnknownArray(body.Intensity?.Observation?.Pref);
+        for (const pref of prefs) {
+          if (!isRecord(pref)) continue;
+          const areas = asUnknownArray(pref.Area);
+          for (const area of areas) {
+            if (!isRecord(area)) continue;
+            const cityNodes = asUnknownArray(area.City);
+            for (const city of cityNodes) {
+              if (isRecord(city) && city.Name) {
+                cities.add(asString(city.Name) || "");
+              }
+            }
+          }
+        }
+
+        // 登録地点（システム・ユーザー）を取得
+        const [{ data: sysLocs }, { data: userLocs }] = await Promise.all([
+          supabase.from("system_locations").select("city, label"),
+          supabase.from("user_locations").select("city, display_name")
+        ]);
+
+        const allRegistered = [
+          ...(sysLocs || []).map(l => ({ city: l.city, label: l.label })),
+          ...(userLocs || []).map(l => ({ city: l.city, label: l.display_name }))
+        ];
+
+        matchedLocations = allRegistered
+          .filter(reg => cities.has(reg.city))
+          .map(reg => `${reg.label}(${reg.city})`);
+      }
+    }
+  } catch (e) {
+    console.error("XML Parsing error:", e);
+  }
+
+  // 地点マッチングが必須な場合（登録地点以外不要）の判定
+  if (matchedLocations.length === 0) {
+    // インシデントを削除して終了（通知しない）
+    await supabase.from("incidents").delete().eq("id", incident.id);
+    return;
+  }
+
   // 詳細内容 (#text) を抽出
   const raw = entry.raw as any;
   const contentText = raw?.content?.['#text'] || raw?.headline?.['#text'] || "";
@@ -318,8 +396,8 @@ async function createIncidentAndNotify(
     .replace(/\\n/g, "\n")
     .replace("{title}", entry.title ?? "")
     .replace("{content}", contentText)
-    .replace("{max_shindo}", "確認中") // 将来XML解析で対応
-    .replace("{target_summary}", "全国"); // 将来XML解析で対応
+    .replace("{max_shindo}", `震度${maxInt}`)
+    .replace("{target_summary}", matchedLocations.join("、"));
 
   const prefix = mode === "test" ? `【訓練：${rule.menu_type.toUpperCase()}】` : "";
   const eventTime = entry.updated 
@@ -330,7 +408,13 @@ async function createIncidentAndNotify(
     mode: mode,
     text: [
       prefix,
+      `*対象の登録地点：${matchedLocations.join("、")}*`,
+      `最大震度：震度${maxInt}`,
+      `震源地：${epicenter}`,
+      `（M${magnitude} / 深さ：${depth}）`,
+      "",
       formattedText,
+      tsunamiText ? `\n${tsunamiText}` : "",
       "",
       `発表時刻: ${eventTime}`,
       "",
