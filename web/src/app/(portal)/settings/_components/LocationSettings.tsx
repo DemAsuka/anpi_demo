@@ -60,7 +60,10 @@ export function LocationSettings({
 
   const [newSysLoc, setNewSysLoc] = useState({
     label: "",
-    address: "",
+    prefecture: "未設定",
+    city: "",
+    jma_code: "",
+    jma_name: "",
     target_group: "all",
     is_permanent: false
   });
@@ -104,8 +107,8 @@ export function LocationSettings({
   };
 
   const handleAddSys = async () => {
-    if (!newSysLoc.label || !newSysLoc.address) {
-      alert("ラベルと住所を入力してください。");
+    if (!newSysLoc.label || !newSysLoc.jma_code) {
+      alert("ラベルと地点を選択してください。");
       return;
     }
     setLoading(true);
@@ -114,7 +117,15 @@ export function LocationSettings({
       const res = await fetch("/api/admin/system-locations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newSysLoc)
+        body: JSON.stringify({
+          label: newSysLoc.label,
+          prefecture: newSysLoc.prefecture,
+          city: newSysLoc.jma_name,
+          jma_code: newSysLoc.jma_code,
+          jma_name: newSysLoc.jma_name,
+          target_group: newSysLoc.target_group,
+          is_permanent: newSysLoc.is_permanent
+        })
       });
 
       if (!res.ok) {
@@ -125,7 +136,7 @@ export function LocationSettings({
       const data = await res.json();
       setSysLocations([...sysLocations, data]);
       setIsAddingSys(false);
-      setNewSysLoc({ label: "", address: "", is_permanent: false, target_group: "all" });
+      setNewSysLoc({ label: "", prefecture: "未設定", city: "", jma_code: "", jma_name: "", is_permanent: false, target_group: "all" });
     } catch (err: any) {
       console.error("API error:", err);
       alert(err.message || "予期せぬエラーが発生しました。");
@@ -263,17 +274,49 @@ export function LocationSettings({
                   <option value="individual">個別（将来用：発災通知のみ）</option>
                 </select>
               </div>
-              <div className="space-y-2 md:col-span-2">
-                <label className="text-xs font-black text-gray-400 uppercase tracking-wider">都道府県・市区町村（ ward まで1箇所で入力）</label>
-                <input 
-                  type="text"
-                  value={newSysLoc.address}
-                  onChange={e => setNewSysLoc({...newSysLoc, address: e.target.value})}
-                  placeholder="栃木県宇都宮市"
+              <div className="space-y-2">
+                <label className="text-xs font-black text-gray-400 uppercase tracking-wider">都道府県</label>
+                <select 
+                  value={newSysLoc.prefecture}
+                  onChange={e => setNewSysLoc({...newSysLoc, prefecture: e.target.value, jma_code: "", jma_name: ""})}
                   className="w-full bg-white border-2 border-gray-100 rounded-xl px-4 py-2 font-bold focus:border-red-500 outline-none transition-colors"
-                />
+                >
+                  <option value="未設定">都道府県を選択</option>
+                  {locationMaster.map(p => <option key={p.pref} value={p.pref}>{p.pref}</option>)}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-black text-gray-400 uppercase tracking-wider">市区町村</label>
+                <select 
+                  value={newSysLoc.jma_code}
+                  onChange={e => {
+                    const prefData = locationMaster.find(p => p.pref === newSysLoc.prefecture);
+                    const cityData = prefData?.cities.find(c => c.code === e.target.value);
+                    if (cityData) {
+                      setNewSysLoc({...newSysLoc, jma_code: cityData.code, jma_name: cityData.name});
+                    }
+                  }}
+                  disabled={newSysLoc.prefecture === "未設定"}
+                  className="w-full bg-white border-2 border-gray-100 rounded-xl px-4 py-2 font-bold focus:border-red-500 outline-none transition-colors"
+                >
+                  <option value="">市区町村を選択</option>
+                  {locationMaster.find(p => p.pref === newSysLoc.prefecture)?.cities.map(c => (
+                    <option key={c.code} value={c.code}>{c.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
+
+            {newSysLoc.jma_name && (
+              <div className="bg-red-50 rounded-2xl p-4 flex items-center gap-3">
+                <span className="text-xl">📡</span>
+                <div>
+                  <div className="text-[10px] font-black text-red-400 uppercase tracking-wider">該当JMA判定地点</div>
+                  <div className="text-sm font-black text-red-600">{newSysLoc.jma_name} ({newSysLoc.jma_code})</div>
+                  <div className="text-[10px] text-red-400 mt-1">※全社共通の通知地点として設定されます。</div>
+                </div>
+              </div>
+            )}
             <div className="flex justify-end gap-3 pt-4">
               <button 
                 onClick={() => setIsAddingSys(false)} 
