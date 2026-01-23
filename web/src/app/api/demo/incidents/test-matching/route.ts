@@ -54,21 +54,21 @@ export async function GET(request: NextRequest) {
       supabase.from("user_locations").select("city, display_name, user_id")
     ]);
 
-    const matchedSys = (sysLocs || []).filter(reg => {
+    const matchedSys = (sysLocs || []).filter((reg: any) => {
       return Array.from(citiesInXml).some(xmlCity => 
         xmlCity.includes(reg.city) || reg.city.includes(xmlCity)
       );
     });
 
-    const matchedUsers = (userLocs || []).filter(reg => {
+    const matchedUsers = (userLocs || []).filter((reg: any) => {
       return Array.from(citiesInXml).some(xmlCity => 
         xmlCity.includes(reg.city) || reg.city.includes(xmlCity)
       );
     });
 
     matchedLocations = [
-      ...matchedSys.map(l => `${l.label}(${l.city})`),
-      ...matchedUsers.map(l => `${l.display_name}(${l.city})`)
+      ...matchedSys.map((l: any) => `${l.label}(${l.city})`),
+      ...matchedUsers.map((l: any) => `${l.display_name}(${l.city})`)
     ];
 
     if (matchedLocations.length > 0) {
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
       if (matchedSys.length > 0) {
         mentionList.push("<!here>");
       } else if (matchedUsers.length > 0) {
-        const userIds = Array.from(new Set(matchedUsers.map(l => l.user_id)));
+        const userIds = Array.from(new Set(matchedUsers.map((l: any) => l.user_id)));
         const { data: profileList } = await supabase
           .from("profiles")
           .select("slack_user_id")
