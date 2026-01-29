@@ -176,6 +176,28 @@ export async function GET(request: NextRequest) {
 
     const changed = fetched.filter((e) => existing.get(e.entryKey) !== e.contentHash);
 
+    // --- 2. Activation Logic ---
+    const { data: rules } = await supabase
+      .from("activation_menus")
+      .select("*");
+
+    // 大量のエントリがある場合（初回同期時など）に通知が漏れないよう、
+    // 判定対象を最新の50件に拡張し、さらに地震情報は最優先で処理する
+    const entriesToProcess = changed
+      .sort((a, b) => {
+        // 地震・津波・火山関連（eqvol.xml）を最優先にする
+        const isEqA = a.sourceFeed.includes("eqvol.xml");
+        const isEqB = b.sourceFeed.includes("eqvol.xml");
+        if (isEqA && !isEqB) return -1;
+        if (!isEqA && isEqB) return 1;
+
+        // 次に更新日時順
+        const ta = a.updated ? new Date(a.updated).getTime() : 0;
+        const tb = b.updated ? new Date(b.updated).getTime() : 0;
+        return tb - ta;
+      })
+      .slice(0, 50);
+
     // --- ステータス更新 & 復旧通知ロジック ---
     const { data: prevStatus } = await supabase
       .from("system_status")
@@ -197,6 +219,13 @@ export async function GET(request: NextRequest) {
         id: "jma_receiver",
         last_success_at: new Date().toISOString(),
         status: "ok",
+        metadata: {
+          last_request_at: new Date().toISOString(),
+          fetched_count: fetched.length,
+          changed_count: changed.length,
+          processed_count: entriesToProcess.length,
+          status_detail: "completed_successfully"
+        },
         updated_at: new Date().toISOString()
       });
 
@@ -223,20 +252,7 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // --- 2. Activation Logic ---
-      const { data: rules } = await supabase
-        .from("activation_menus")
-        .select("*");
-
-      // 大量のエントリがある場合（初回同期時など）に大量の通知が飛ばないよう、
-      // 判定対象を最新の数件（例：10件）に制限する
-      const entriesToProcess = changed
-        .sort((a, b) => {
-          const ta = a.updated ? new Date(a.updated).getTime() : 0;
-          const tb = b.updated ? new Date(b.updated).getTime() : 0;
-          return tb - ta;
-        })
-        .slice(0, 10);
+      console.log(`Processing ${entriesToProcess.length} entries (out of ${changed.length} changed)`);
 
       for (const entry of entriesToProcess) {
         // 詳細内容 (content or headline) を抽出
