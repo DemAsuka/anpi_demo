@@ -315,6 +315,7 @@ async function createIncidentAndNotify(
   let magnitude = "確認中";
   let tsunamiText = "";
   let matchedLocations: string[] = [];
+  const mentionList: string[] = [];
 
   try {
     if (entry.link) {
