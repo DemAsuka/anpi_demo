@@ -176,26 +176,6 @@ export async function GET(request: NextRequest) {
 
     const changed = fetched.filter((e) => existing.get(e.entryKey) !== e.contentHash);
 
-    console.log(`Fetched: ${fetched.length}, Changed: ${changed.length}`);
-
-    // --- 2. Activation Logic ---
-    const { data: rules } = await supabase
-      .from("activation_menus")
-      .select("*");
-
-    // 地震・津波・火山関連（eqvol.xml）を最優先にする
-    const sortedChanged = [...changed].sort((a, b) => {
-      const isEqA = a.sourceFeed.includes("eqvol.xml");
-      const isEqB = b.sourceFeed.includes("eqvol.xml");
-      if (isEqA && !isEqB) return -1;
-      if (!isEqA && isEqB) return 1;
-      const ta = a.updated ? new Date(a.updated).getTime() : 0;
-      const tb = b.updated ? new Date(b.updated).getTime() : 0;
-      return tb - ta;
-    });
-
-    const entriesToProcess = sortedChanged.slice(0, 50);
-
     // --- ステータス更新 & 復旧通知ロジック ---
     const { data: prevStatus } = await supabase
       .from("system_status")
@@ -217,13 +197,6 @@ export async function GET(request: NextRequest) {
         id: "jma_receiver",
         last_success_at: new Date().toISOString(),
         status: "ok",
-        metadata: {
-          last_request_at: new Date().toISOString(),
-          fetched_count: fetched.length,
-          changed_count: changed.length,
-          processed_count: entriesToProcess.length,
-          status_detail: "completed_successfully"
-        },
         updated_at: new Date().toISOString()
       });
 
@@ -250,7 +223,20 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      console.log(`Processing ${entriesToProcess.length} entries`);
+      // --- 2. Activation Logic ---
+      const { data: rules } = await supabase
+        .from("activation_menus")
+        .select("*");
+
+      // 大量のエントリがある場合（初回同期時など）に大量の通知が飛ばないよう、
+      // 判定対象を最新の数件（例：10件）に制限する
+      const entriesToProcess = changed
+        .sort((a, b) => {
+          const ta = a.updated ? new Date(a.updated).getTime() : 0;
+          const tb = b.updated ? new Date(b.updated).getTime() : 0;
+          return tb - ta;
+        })
+        .slice(0, 10);
 
       for (const entry of entriesToProcess) {
         // 詳細内容 (content or headline) を抽出
@@ -269,7 +255,6 @@ export async function GET(request: NextRequest) {
           const isProdMatch = rule.enabled && ruleKeywords.length > 0 && ruleKeywords.some((k: string) => searchTarget.includes(k));
 
           if (isProdMatch) {
-            console.log(`Match found (Prod): ${entry.title}`);
             await createIncidentAndNotify(supabase, entry, rule, "production");
             // 本番通知をした場合は試験通知はスキップ（ノイズ抑制）
             continue;
@@ -279,7 +264,6 @@ export async function GET(request: NextRequest) {
           const isTestMatch = rule.test_enabled && testKeywords.length > 0 && testKeywords.some((k: string) => searchTarget.includes(k));
 
           if (isTestMatch) {
-            console.log(`Match found (Test): ${entry.title}`);
             await createIncidentAndNotify(supabase, entry, rule, "test");
           }
         }
@@ -331,8 +315,6 @@ async function createIncidentAndNotify(
   let magnitude = "確認中";
   let tsunamiText = "";
   let matchedLocations: string[] = [];
-  const detectedPrefNames = new Set<string>();
-  const mentionList: string[] = [];
 
   try {
     if (entry.link) {
@@ -341,15 +323,6 @@ async function createIncidentAndNotify(
       const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
       const doc = parser.parse(xml);
       const body = doc?.Report?.Body;
-      const head = doc?.Report?.Head;
-
-      // ヘッドから対象都道府県を抽出（バックアップ用）
-      if (head?.Area) {
-        const headAreas = asUnknownArray(head.Area);
-        for (const ha of headAreas) {
-          if (isRecord(ha) && ha.Name) detectedPrefNames.add(asString(ha.Name) || "");
-        }
-      }
 
       if (body) {
         // 最大震度
@@ -372,11 +345,9 @@ async function createIncidentAndNotify(
         // 地点マッチング
         const cities = new Set<string>();
         const areasInXml = new Set<string>();
-        const prefs = asUnknownArray(body.Intensity?.Observation?.Pref || body.Warning?.Pref);
+        const prefs = asUnknownArray(body.Intensity?.Observation?.Pref);
         for (const pref of prefs) {
           if (!isRecord(pref)) continue;
-          if (pref["@_name"]) detectedPrefNames.add(asString(pref["@_name"]) || "");
-          
           const areas = asUnknownArray(pref.Area);
           for (const area of areas) {
             if (!isRecord(area)) continue;
@@ -400,7 +371,7 @@ async function createIncidentAndNotify(
 
         const isEarthquake = rule.menu_type === "earthquake";
 
-        const matchedSys = (sysLocs || []).filter((reg: any) => {
+        const matchedSys = (sysLocs || []).filter(reg => {
           // 地震の場合は市区町村レベルでチェック
           const cityMatch = Array.from(cities).some(xmlCity => 
             xmlCity.includes(reg.city) || reg.city.includes(xmlCity)
@@ -412,7 +383,7 @@ async function createIncidentAndNotify(
           return cityMatch || areaMatch;
         });
 
-        const matchedUsers = (userLocs || []).filter((reg: any) => {
+        const matchedUsers = (userLocs || []).filter(reg => {
           const cityMatch = Array.from(cities).some(xmlCity => 
             xmlCity.includes(reg.city) || reg.city.includes(xmlCity)
           );
@@ -423,8 +394,8 @@ async function createIncidentAndNotify(
         });
 
         matchedLocations = [
-          ...matchedSys.map((l: any) => `${l.label}(${l.city})`),
-          ...matchedUsers.map((l: any) => `${l.display_name}(${l.city})`)
+          ...matchedSys.map(l => `${l.label}(${l.city})`),
+          ...matchedUsers.map(l => `${l.display_name}(${l.city})`)
         ];
 
         // メンション先の決定
@@ -434,7 +405,7 @@ async function createIncidentAndNotify(
           mentionList.push("<!here>");
         } else if (matchedUsers.length > 0) {
           // ユーザー個別の地点のみの場合は該当ユーザーのみメンション
-          const userIds = Array.from(new Set(matchedUsers.map((l: any) => l.user_id)));
+          const userIds = Array.from(new Set(matchedUsers.map(l => l.user_id)));
           const { data: profileList } = await supabase
             .from("profiles")
             .select("slack_user_id")
@@ -456,16 +427,9 @@ async function createIncidentAndNotify(
 
   // 地点マッチングが必須な場合（登録地点以外不要）の判定
   if (matchedLocations.length === 0) {
-    if (mode === "test") {
-      // 試験モードの場合は、マッチしなくても「デモ用全国通知」として続行
-      const prefs = Array.from(detectedPrefNames).filter(Boolean);
-      const prefSummary = prefs.length > 0 ? `（検知：${prefs.slice(0, 5).join("、")}${prefs.length > 5 ? "…他" : ""}）` : "";
-      matchedLocations = [`デモ用全国通知${prefSummary}`];
-    } else {
-      // 本番モードでマッチしない場合は削除して終了
-      await supabase.from("incidents").delete().eq("id", incident.id);
-      return;
-    }
+    // インシデントを削除して終了（通知しない）
+    await supabase.from("incidents").delete().eq("id", incident.id);
+    return;
   }
 
   // 詳細内容 (#text) を抽出
