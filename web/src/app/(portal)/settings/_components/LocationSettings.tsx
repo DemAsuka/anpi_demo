@@ -108,16 +108,7 @@ export function LocationSettings({
     if (!error && data) {
       setLocations([...locations, data]);
       setIsAdding(false);
-      setNewLoc({ 
-        location_type: "parents", 
-        display_name: "", 
-        prefecture: "未設定", 
-        city: "", 
-        jma_code: "", 
-        jma_name: "",
-        jma_area_name: "",
-        jma_area_code: ""
-      });
+      setNewLoc({ location_type: "parents", display_name: "", prefecture: "未設定", city: "", jma_code: "", jma_name: "" });
     } else {
       console.error("Supabase error:", error);
       alert("個人の地点登録に失敗しました。");
@@ -157,17 +148,7 @@ export function LocationSettings({
       const data = await res.json();
       setSysLocations([...sysLocations, data]);
       setIsAddingSys(false);
-      setNewSysLoc({ 
-        label: "", 
-        prefecture: "未設定", 
-        city: "", 
-        jma_code: "", 
-        jma_name: "", 
-        jma_area_name: "",
-        jma_area_code: "",
-        is_permanent: false, 
-        target_group: "all" 
-      });
+      setNewSysLoc({ label: "", prefecture: "未設定", city: "", jma_code: "", jma_name: "", is_permanent: false, target_group: "all" });
     } catch (err: any) {
       console.error("API error:", err);
       alert(err.message || "予期せぬエラーが発生しました。");
