@@ -228,17 +228,22 @@ export async function GET(request: NextRequest) {
         .from("activation_menus")
         .select("*");
 
-      // 大量のエントリがある場合（初回同期時など）に大量の通知が飛ばないよう、
-      // 判定対象を最新の数件（例：10件）に制限する
-      const entriesToProcess = changed
-        .sort((a, b) => {
-          const ta = a.updated ? new Date(a.updated).getTime() : 0;
-          const tb = b.updated ? new Date(b.updated).getTime() : 0;
-          return tb - ta;
-        })
-        .slice(0, 10);
+    // 大量のエントリがある場合（初回同期時など）に通知が漏れないよう、
+    // 判定対象を最新の50件に拡張し、さらに地震情報は最優先で処理する
+    const sortedChanged = [...changed].sort((a, b) => {
+      // 地震・津波・火山関連（eqvol.xml）を最優先にする
+      const isEqA = a.sourceFeed.includes("eqvol.xml");
+      const isEqB = b.sourceFeed.includes("eqvol.xml");
+      if (isEqA && !isEqB) return -1;
+      if (!isEqA && isEqB) return 1;
+      const ta = a.updated ? new Date(a.updated).getTime() : 0;
+      const tb = b.updated ? new Date(b.updated).getTime() : 0;
+      return tb - ta;
+    });
 
-      for (const entry of entriesToProcess) {
+    const entriesToProcess = sortedChanged.slice(0, 50);
+
+    for (const entry of entriesToProcess) {
         // 詳細内容 (content or headline) を抽出
         const raw = entry.raw as any;
         const contentText = raw?.content?.['#text'] || raw?.headline?.['#text'] || "";
@@ -373,6 +378,7 @@ async function createIncidentAndNotify(
         const isEarthquake = rule.menu_type === "earthquake";
 
         const matchedSys = (sysLocs || []).filter((reg: any) => {
+          if (!reg.city) return false;
           // 地震の場合は市区町村レベルでチェック
           const cityMatch = Array.from(cities).some(xmlCity => 
             xmlCity.includes(reg.city) || reg.city.includes(xmlCity)
@@ -385,6 +391,7 @@ async function createIncidentAndNotify(
         });
 
         const matchedUsers = (userLocs || []).filter((reg: any) => {
+          if (!reg.city) return false;
           const cityMatch = Array.from(cities).some(xmlCity => 
             xmlCity.includes(reg.city) || reg.city.includes(xmlCity)
           );
@@ -428,9 +435,14 @@ async function createIncidentAndNotify(
 
   // 地点マッチングが必須な場合（登録地点以外不要）の判定
   if (matchedLocations.length === 0) {
-    // インシデントを削除して終了（通知しない）
-    await supabase.from("incidents").delete().eq("id", incident.id);
-    return;
+    if (mode === "test") {
+      // 試験モードの場合は、マッチしなくても「デモ用全国通知」として続行
+      matchedLocations = ["デモ用全国通知（試験環境）"];
+    } else {
+      // 本番モードでマッチしない場合は削除して終了
+      await supabase.from("incidents").delete().eq("id", incident.id);
+      return;
+    }
   }
 
   // 詳細内容 (#text) を抽出
