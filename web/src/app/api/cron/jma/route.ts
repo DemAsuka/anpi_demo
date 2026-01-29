@@ -371,7 +371,7 @@ async function createIncidentAndNotify(
 
         const isEarthquake = rule.menu_type === "earthquake";
 
-        const matchedSys = (sysLocs || []).filter(reg => {
+        const matchedSys = (sysLocs || []).filter((reg: any) => {
           // 地震の場合は市区町村レベルでチェック
           const cityMatch = Array.from(cities).some(xmlCity => 
             xmlCity.includes(reg.city) || reg.city.includes(xmlCity)
@@ -383,7 +383,7 @@ async function createIncidentAndNotify(
           return cityMatch || areaMatch;
         });
 
-        const matchedUsers = (userLocs || []).filter(reg => {
+        const matchedUsers = (userLocs || []).filter((reg: any) => {
           const cityMatch = Array.from(cities).some(xmlCity => 
             xmlCity.includes(reg.city) || reg.city.includes(xmlCity)
           );
@@ -394,8 +394,8 @@ async function createIncidentAndNotify(
         });
 
         matchedLocations = [
-          ...matchedSys.map(l => `${l.label}(${l.city})`),
-          ...matchedUsers.map(l => `${l.display_name}(${l.city})`)
+          ...matchedSys.map((l: any) => `${l.label}(${l.city})`),
+          ...matchedUsers.map((l: any) => `${l.display_name}(${l.city})`)
         ];
 
         // メンション先の決定
@@ -405,14 +405,14 @@ async function createIncidentAndNotify(
           mentionList.push("<!here>");
         } else if (matchedUsers.length > 0) {
           // ユーザー個別の地点のみの場合は該当ユーザーのみメンション
-          const userIds = Array.from(new Set(matchedUsers.map(l => l.user_id)));
+          const userIds = Array.from(new Set(matchedUsers.map((l: any) => l.user_id)));
           const { data: profileList } = await supabase
             .from("profiles")
             .select("slack_user_id")
             .in("id", userIds);
           
           if (profileList) {
-            for (const p of profileList) {
+            for (const p of profileList as any[]) {
               if (p.slack_user_id) {
                 mentionList.push(`<@${p.slack_user_id}>`);
               }
