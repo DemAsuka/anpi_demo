@@ -176,27 +176,25 @@ export async function GET(request: NextRequest) {
 
     const changed = fetched.filter((e) => existing.get(e.entryKey) !== e.contentHash);
 
+    console.log(`Fetched: ${fetched.length}, Changed: ${changed.length}`);
+
     // --- 2. Activation Logic ---
     const { data: rules } = await supabase
       .from("activation_menus")
       .select("*");
 
-    // 大量のエントリがある場合（初回同期時など）に通知が漏れないよう、
-    // 判定対象を最新の50件に拡張し、さらに地震情報は最優先で処理する
-    const entriesToProcess = changed
-      .sort((a, b) => {
-        // 地震・津波・火山関連（eqvol.xml）を最優先にする
-        const isEqA = a.sourceFeed.includes("eqvol.xml");
-        const isEqB = b.sourceFeed.includes("eqvol.xml");
-        if (isEqA && !isEqB) return -1;
-        if (!isEqA && isEqB) return 1;
+    // 地震・津波・火山関連（eqvol.xml）を最優先にする
+    const sortedChanged = [...changed].sort((a, b) => {
+      const isEqA = a.sourceFeed.includes("eqvol.xml");
+      const isEqB = b.sourceFeed.includes("eqvol.xml");
+      if (isEqA && !isEqB) return -1;
+      if (!isEqA && isEqB) return 1;
+      const ta = a.updated ? new Date(a.updated).getTime() : 0;
+      const tb = b.updated ? new Date(b.updated).getTime() : 0;
+      return tb - ta;
+    });
 
-        // 次に更新日時順
-        const ta = a.updated ? new Date(a.updated).getTime() : 0;
-        const tb = b.updated ? new Date(b.updated).getTime() : 0;
-        return tb - ta;
-      })
-      .slice(0, 50);
+    const entriesToProcess = sortedChanged.slice(0, 50);
 
     // --- ステータス更新 & 復旧通知ロジック ---
     const { data: prevStatus } = await supabase
@@ -252,7 +250,7 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      console.log(`Processing ${entriesToProcess.length} entries (out of ${changed.length} changed)`);
+      console.log(`Processing ${entriesToProcess.length} entries`);
 
       for (const entry of entriesToProcess) {
         // 詳細内容 (content or headline) を抽出
@@ -271,6 +269,7 @@ export async function GET(request: NextRequest) {
           const isProdMatch = rule.enabled && ruleKeywords.length > 0 && ruleKeywords.some((k: string) => searchTarget.includes(k));
 
           if (isProdMatch) {
+            console.log(`Match found (Prod): ${entry.title}`);
             await createIncidentAndNotify(supabase, entry, rule, "production");
             // 本番通知をした場合は試験通知はスキップ（ノイズ抑制）
             continue;
@@ -280,6 +279,7 @@ export async function GET(request: NextRequest) {
           const isTestMatch = rule.test_enabled && testKeywords.length > 0 && testKeywords.some((k: string) => searchTarget.includes(k));
 
           if (isTestMatch) {
+            console.log(`Match found (Test): ${entry.title}`);
             await createIncidentAndNotify(supabase, entry, rule, "test");
           }
         }
