@@ -332,6 +332,7 @@ async function createIncidentAndNotify(
   let tsunamiText = "";
   let matchedLocations: string[] = [];
   const detectedPrefNames = new Set<string>();
+  const mentionList: string[] = [];
 
   try {
     if (entry.link) {
