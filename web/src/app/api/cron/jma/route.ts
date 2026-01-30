@@ -480,6 +480,13 @@ async function createIncidentAndNotify(
     ? new Date(entry.updated).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) 
     : "不明";
 
+  // 地震情報セクションの組み立て（地震の場合のみ）
+  const eqInfoSection = rule.menu_type === "earthquake" ? [
+    `最大震度：震度${maxInt}`,
+    `震源地：${epicenter}`,
+    `（M${magnitude} / 深さ：${depth}）`,
+  ] : [];
+
   // メンション先がある場合、メッセージの先頭に追加
   const mentions = mentionList.length > 0 ? mentionList : undefined;
 
@@ -489,9 +496,7 @@ async function createIncidentAndNotify(
     text: [
       prefix,
       `*対象の登録地点：${matchedLocations.join("、")}*`,
-      `最大震度：震度${maxInt}`,
-      `震源地：${epicenter}`,
-      `（M${magnitude} / 深さ：${depth}）`,
+      ...eqInfoSection,
       "",
       formattedText,
       tsunamiText ? `\n${tsunamiText}` : "",
