@@ -9,6 +9,7 @@ type ActivationMenu = {
   threshold: Record<string, any>;
   test_enabled: boolean;
   test_threshold: Record<string, any>;
+  template: string | null;
 };
 
 type Props = {
@@ -22,10 +23,7 @@ export function ActivationMenuEditor({ menus: initialMenus, viewMode }: Props) {
 
   const isTestView = viewMode === "test";
 
-  const handleUpdateKeywords = async (id: string, keywordsStr: string, isTest: boolean) => {
-    const keywords = keywordsStr.split(",").map(k => k.trim()).filter(Boolean);
-    const field = isTest ? "test_threshold" : "threshold";
-    
+  const handleUpdateField = async (id: string, field: string, value: any) => {
     setLoadingId(id);
     try {
       const res = await fetch("/api/admin/activation-menus", {
@@ -33,45 +31,7 @@ export function ActivationMenuEditor({ menus: initialMenus, viewMode }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id,
-          [field]: { keywords },
-        }),
-      });
-
-      if (!res.ok) {
-        let errorMessage = `Update failed with status ${res.status}`;
-        try {
-          const errorData = await res.json();
-          if (errorData && typeof errorData.error === "string") {
-            errorMessage = errorData.error;
-          } else if (errorData && typeof errorData.error === "object") {
-            errorMessage = JSON.stringify(errorData.error);
-          }
-        } catch (e) {
-          // Ignore JSON parse error
-        }
-        throw new Error(errorMessage);
-      }
-
-      setMenus(prev => prev.map(m => m.id === id ? { ...m, [field]: { keywords } } : m));
-      alert(`${isTest ? "試験" : "本番"}用キーワードを更新しました。`);
-    } catch (err: any) {
-      console.error(err);
-      alert(err.message || "更新に失敗しました。");
-    } finally {
-      setLoadingId(null);
-    }
-  };
-
-  const handleToggleEnabled = async (id: string, currentEnabled: boolean, isTest: boolean) => {
-    const field = isTest ? "test_enabled" : "enabled";
-    setLoadingId(id);
-    try {
-      const res = await fetch("/api/admin/activation-menus", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id,
-          [field]: !currentEnabled,
+          [field]: value,
         }),
       });
 
@@ -86,13 +46,34 @@ export function ActivationMenuEditor({ menus: initialMenus, viewMode }: Props) {
         throw new Error(errorMessage);
       }
 
-      setMenus(prev => prev.map(m => m.id === id ? { ...m, [field]: !currentEnabled } : m));
+      setMenus(prev => prev.map(m => m.id === id ? { ...m, [field]: value } : m));
+      return true;
     } catch (err: any) {
       console.error(err);
       alert(err.message || "更新に失敗しました。");
+      return false;
     } finally {
       setLoadingId(null);
     }
+  };
+
+  const handleUpdateKeywords = async (id: string, keywordsStr: string, isTest: boolean) => {
+    const keywords = keywordsStr.split(",").map(k => k.trim()).filter(Boolean);
+    const field = isTest ? "test_threshold" : "threshold";
+    if (await handleUpdateField(id, field, { keywords })) {
+      alert(`${isTest ? "試験" : "本番"}用キーワードを更新しました。`);
+    }
+  };
+
+  const handleUpdateTemplate = async (id: string, template: string) => {
+    if (await handleUpdateField(id, "template", template)) {
+      alert("通知テンプレートを更新しました。");
+    }
+  };
+
+  const handleToggleEnabled = async (id: string, currentEnabled: boolean, isTest: boolean) => {
+    const field = isTest ? "test_enabled" : "enabled";
+    await handleUpdateField(id, field, !currentEnabled);
   };
 
   return (
@@ -196,6 +177,35 @@ export function ActivationMenuEditor({ menus: initialMenus, viewMode }: Props) {
                   </div>
                 </div>
               )}
+
+              {/* テンプレート編集（共通） */}
+              <div className="p-6 bg-gray-50/50 rounded-[1.5rem] border border-gray-100 space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-gray-600 uppercase tracking-wider">Notification Template</span>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-gray-400">Message Template</label>
+                  <textarea
+                    id={`template-${menu.id}`}
+                    defaultValue={menu.template || ""}
+                    rows={4}
+                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-gray-500/10 resize-none"
+                    placeholder="通知テンプレートを入力... (例: {title}\n{content})"
+                  />
+                  <div className="flex justify-between items-center pt-1">
+                    <p className="text-[9px] text-gray-400 font-medium">
+                      利用可能: {"{title}, {content}, {target_summary}, {max_shindo}"}
+                    </p>
+                    <button
+                      onClick={() => handleUpdateTemplate(menu.id, (document.getElementById(`template-${menu.id}`) as HTMLTextAreaElement).value)}
+                      disabled={loadingId === menu.id}
+                      className="bg-gray-900 text-white text-[9px] font-black uppercase px-6 py-2 rounded-xl hover:bg-black transition-colors"
+                    >
+                      Save Template
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         ))}

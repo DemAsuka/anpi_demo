@@ -40,6 +40,7 @@ export async function PATCH(request: NextRequest) {
     if (json.threshold) updatePayload.threshold = json.threshold;
     if (json.test_enabled !== undefined) updatePayload.test_enabled = !!json.test_enabled;
     if (json.test_threshold) updatePayload.test_threshold = json.test_threshold;
+    if (json.template !== undefined) updatePayload.template = json.template;
 
     const { data, error } = await supabase
       .from("activation_menus")

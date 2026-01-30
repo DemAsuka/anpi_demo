@@ -176,6 +176,24 @@ export async function GET(request: NextRequest) {
 
     const changed = fetched.filter((e) => existing.get(e.entryKey) !== e.contentHash);
 
+    // --- 2. Activation Logic ---
+    const { data: rules } = await supabase
+      .from("activation_menus")
+      .select("*");
+
+    // 地震・津波・火山関連（eqvol.xml）を最優先にしつつ、処理対象を50件に拡大
+    const sortedChanged = [...changed].sort((a, b) => {
+      const isEqA = a.sourceFeed.includes("eqvol.xml");
+      const isEqB = b.sourceFeed.includes("eqvol.xml");
+      if (isEqA && !isEqB) return -1;
+      if (!isEqA && isEqB) return 1;
+      const ta = a.updated ? new Date(a.updated).getTime() : 0;
+      const tb = b.updated ? new Date(b.updated).getTime() : 0;
+      return tb - ta;
+    });
+
+    const entriesToProcess = sortedChanged.slice(0, 50);
+
     // --- ステータス更新 & 復旧通知ロジック ---
     const { data: prevStatus } = await supabase
       .from("system_status")
@@ -407,7 +425,6 @@ async function createIncidentAndNotify(
         ];
 
         // メンション先の決定
-        const mentionList: string[] = [];
         if (matchedSys.length > 0) {
           // 全社共通の地点が含まれる場合は全社員メンション
           mentionList.push("<!here>");
