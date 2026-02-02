@@ -487,6 +487,11 @@ async function createIncidentAndNotify(
     `（M${magnitude} / 深さ：${depth}）`,
   ] : [];
 
+  // 登録地点ごとの警報発表メッセージ（地震以外）
+  const locationAlerts = rule.menu_type !== "earthquake" 
+    ? matchedLocations.map(loc => `*${loc}にて${entry.title}が発表されています。*`)
+    : [];
+
   // メンション先がある場合、メッセージの先頭に追加
   const mentions = mentionList.length > 0 ? mentionList : undefined;
 
@@ -495,7 +500,7 @@ async function createIncidentAndNotify(
     mentions: mentions,
     text: [
       prefix,
-      `*対象の登録地点：${matchedLocations.join("、")}*`,
+      locationAlerts.length > 0 ? locationAlerts.join("\n") : `*対象の登録地点：${matchedLocations.join("、")}*`,
       ...eqInfoSection,
       "",
       formattedText,
