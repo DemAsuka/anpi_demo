@@ -356,65 +356,48 @@ async function createIncidentAndNotify(
         const cities = new Set<string>();
         const areasInXml = new Set<string>();
         
-        // --- 震度情報の解析 (Intensity) ---
-        const prefs = asUnknownArray(body.Intensity?.Observation?.Pref);
-        for (const pref of prefs) {
-          if (!isRecord(pref)) continue;
-          const areas = asUnknownArray(pref.Area);
-          for (const area of areas) {
-            if (!isRecord(area)) continue;
-            if (area.Name) {
-              const name = asString(area.Name) || "";
-              areasInXml.add(name);
-              actualAreasInXml.push(name);
-            }
-            const cityNodes = asUnknownArray(area.City);
-            for (const city of cityNodes) {
-              if (isRecord(city) && city.Name) {
-                const name = asString(city.Name) || "";
-                cities.add(name);
-                actualAreasInXml.push(name);
-              }
-            }
-          }
-        }
+        // --- 再帰的なエリア抽出関数の定義 ---
+        const extractNames = (obj: any): string[] => {
+          const names: string[] = [];
+          if (!obj || typeof obj !== "object") return names;
 
-        // --- 気象警報・注意報の解析 (Warning) ---
-        const warningItems = asUnknownArray(body.Warning?.Item);
-        for (const item of warningItems) {
-          if (!isRecord(item)) continue;
-          
-          // 通常の警報 (Warning > Item > Area)
-          const areas = asUnknownArray(item.Area);
-          for (const area of areas) {
-            if (isRecord(area) && area.Name) {
-              const name = asString(area.Name) || "";
-              areasInXml.add(name);
-              actualAreasInXml.push(name);
+          if (Array.isArray(obj)) {
+            for (const item of obj) {
+              names.push(...extractNames(item));
             }
-          }
-
-          // 大雨危険度通知など (Warning > Item > Kind > Property > SubProperty > Area)
-          const kinds = asUnknownArray(item.Kind);
-          for (const kind of kinds) {
-            if (!isRecord(kind)) continue;
-            const subProps = asUnknownArray((kind.Property as any)?.SubProperty);
-            for (const sub of subProps) {
-              if (!isRecord(sub)) continue;
-              const subAreas = asUnknownArray(sub.Area);
-              for (const sArea of subAreas) {
-                if (isRecord(sArea) && sArea.Name) {
-                  const name = asString(sArea.Name) || "";
-                  areasInXml.add(name);
-                  actualAreasInXml.push(name);
+          } else {
+            // Areaタグを見つけたらその中のNameを取得
+            if (obj.Area) {
+              const areas = asUnknownArray(obj.Area);
+              for (const a of areas) {
+                if (isRecord(a) && a.Name) {
+                  const n = asString(a.Name);
+                  if (n) names.push(n);
                 }
               }
             }
+            // さらに深く探索
+            for (const key in obj) {
+              if (key !== "Area") {
+                names.push(...extractNames(obj[key]));
+              }
+            }
           }
+          return names;
+        };
+
+        // --- 気象警報・注意報の解析 (Warning) ---
+        if (body.Warning) {
+          actualAreasInXml.push(...extractNames(body.Warning));
         }
 
-        // 重複削除
-        actualAreasInXml = Array.from(new Set(actualAreasInXml));
+        // --- 震度情報の解析 (Intensity) ---
+        if (body.Intensity) {
+          actualAreasInXml.push(...extractNames(body.Intensity));
+        }
+
+        // 重複削除と空文字の除外
+        actualAreasInXml = Array.from(new Set(actualAreasInXml.filter(n => n && n.length > 0)));
 
         // 登録地点（システム・ユーザー）を取得
         const [{ data: sysLocs }, { data: userLocs }] = await Promise.all([
