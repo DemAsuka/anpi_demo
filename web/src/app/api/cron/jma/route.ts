@@ -383,13 +383,32 @@ async function createIncidentAndNotify(
         const warningItems = asUnknownArray(body.Warning?.Item);
         for (const item of warningItems) {
           if (!isRecord(item)) continue;
+          
+          // 通常の警報 (Warning > Item > Area)
           const areas = asUnknownArray(item.Area);
           for (const area of areas) {
-            if (!isRecord(area)) continue;
-            if (area.Name) {
+            if (isRecord(area) && area.Name) {
               const name = asString(area.Name) || "";
               areasInXml.add(name);
               actualAreasInXml.push(name);
+            }
+          }
+
+          // 大雨危険度通知など (Warning > Item > Kind > Property > SubProperty > Area)
+          const kinds = asUnknownArray(item.Kind);
+          for (const kind of kinds) {
+            if (!isRecord(kind)) continue;
+            const subProps = asUnknownArray((kind.Property as any)?.SubProperty);
+            for (const sub of subProps) {
+              if (!isRecord(sub)) continue;
+              const subAreas = asUnknownArray(sub.Area);
+              for (const sArea of subAreas) {
+                if (isRecord(sArea) && sArea.Name) {
+                  const name = asString(sArea.Name) || "";
+                  areasInXml.add(name);
+                  actualAreasInXml.push(name);
+                }
+              }
             }
           }
         }
@@ -483,7 +502,8 @@ async function createIncidentAndNotify(
     .replace("{title}", entry.title ?? "")
     .replace("{content}", contentText)
     .replace("{max_shindo}", `震度${maxInt}`)
-    .replace("{target_summary}", matchedLocations.join("、"));
+    .replace("{target_summary}", matchedLocations.join("、"))
+    .replace("対象目安：", "通知対象エリア：");
 
   const prefix = mode === "test" ? `【訓練：${rule.menu_type.toUpperCase()}】` : "";
   const eventTime = entry.updated 
