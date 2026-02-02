@@ -482,8 +482,15 @@ async function createIncidentAndNotify(
   // 地点マッチングが必須な場合（登録地点以外不要）の判定
   if (matchedLocations.length === 0) {
     if (mode === "test") {
-      // 試験モードの場合は、マッチしなくても「デモ用全国通知」として続行
-      matchedLocations = ["デモ用全国通知（試験環境）"];
+      // 試験モードの場合は、マッチしなくても実際のエリア名があればそれを使用
+      if (actualAreasInXml.length > 0) {
+        matchedLocations = [
+          actualAreasInXml.slice(0, 5).join("、") + 
+          (actualAreasInXml.length > 5 ? `ほか${actualAreasInXml.length - 5}地点` : "")
+        ];
+      } else {
+        matchedLocations = ["デモ用全国通知（試験環境）"];
+      }
     } else {
       // 本番モードでマッチしない場合は削除して終了
       await supabase.from("incidents").delete().eq("id", incident.id);
