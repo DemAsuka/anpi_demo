@@ -39,7 +39,7 @@ export default async function SettingsPage({
     .maybeSingle();
 
   if (!profile) {
-    const { data: newProfile } = await supabase
+    const { data: newProfile, error: insertError } = await supabase
       .from("profiles")
       .insert({
         id: userId,
@@ -47,7 +47,11 @@ export default async function SettingsPage({
         full_name: fullName,
       })
       .select()
-      .single();
+      .maybeSingle();
+    
+    if (insertError) {
+      console.error("Profile creation error:", insertError);
+    }
     profile = newProfile;
   }
 
