@@ -503,7 +503,7 @@ async function createIncidentAndNotify(
     .replace("{content}", contentText)
     .replace("{max_shindo}", `震度${maxInt}`)
     .replace("{target_summary}", matchedLocations.join("、"))
-    .replace("対象目安：", "通知対象エリア：");
+    .replace(/対象目安[：:]\s*/g, "通知対象エリア：");
 
   const prefix = mode === "test" ? `【訓練：${rule.menu_type.toUpperCase()}】` : "";
   const eventTime = entry.updated 
