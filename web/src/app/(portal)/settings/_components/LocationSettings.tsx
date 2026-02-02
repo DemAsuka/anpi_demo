@@ -430,7 +430,7 @@ export function LocationSettings({
                   onChange={e => setNewLoc({...newLoc, location_type: e.target.value})}
                   className="w-full bg-white border-2 border-gray-100 rounded-xl px-4 py-2 font-bold focus:border-blue-500 outline-none transition-colors"
                 >
-                  {LOCATION_TYPES.map(t => <option key={t.value} value={t.label}>{t.label}</option>)}
+                  {LOCATION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </div>
               <div className="space-y-2">
