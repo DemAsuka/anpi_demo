@@ -52,7 +52,15 @@ export default async function SettingsPage({
     if (insertError) {
       console.error("Profile creation error:", insertError);
     }
-    profile = newProfile;
+    // ここで profile が null のままだと ProfileSettings で落ちるため、
+    // 最小限のオブジェクトをセットする
+    profile = newProfile || {
+      id: userId,
+      full_name: fullName,
+      slack_user_id: null,
+      department: null,
+      email: primaryEmail
+    };
   }
 
   // 登録地点の取得
