@@ -97,43 +97,29 @@ export function SystemLocationEditor({ initialLocations }: { initialLocations: S
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <label className="text-xs font-black text-gray-400 uppercase tracking-wider">都道府県</label>
-                <select
+                <label className="text-xs font-black text-gray-400 uppercase tracking-wider">都道府県名（例：北海道）</label>
+                <input
+                  type="text"
                   value={loc.prefecture}
-                  onChange={(e) => handleUpdate(loc.id, { prefecture: e.target.value, city: "未選択", jma_code: "", jma_name: "" })}
+                  onChange={(e) => handleUpdate(loc.id, { prefecture: e.target.value })}
+                  placeholder="都道府県名を入力"
                   className="w-full bg-gray-50 rounded-xl px-4 py-3 font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500/20"
-                >
-                  <option value="未設定">選択してください</option>
-                  {locationMaster.map(p => (
-                    <option key={p.pref} value={p.pref}>{p.pref}</option>
-                  ))}
-                </select>
+                />
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-black text-gray-400 uppercase tracking-wider">市区町村</label>
-                <select
-                  value={loc.jma_code || ""}
-                  onChange={(e) => {
-                    const prefData = locationMaster.find(p => p.pref === loc.prefecture);
-                    const cityData = prefData?.cities.find((c: any) => c.code === e.target.value);
-                    if (cityData) {
-                      handleUpdate(loc.id, { 
-                        city: cityData.name, 
-                        jma_code: cityData.code, 
-                        jma_name: cityData.name,
-                        jma_area_name: (cityData as any).area_name,
-                        jma_area_code: (cityData as any).area_code
-                      });
-                    }
-                  }}
+                <label className="text-xs font-black text-gray-400 uppercase tracking-wider">市区町村名（例：稚内市）</label>
+                <input
+                  type="text"
+                  value={loc.city}
+                  onChange={(e) => handleUpdate(loc.id, { 
+                    city: e.target.value,
+                    jma_name: e.target.value,
+                    // 自由入力時はコードが不明なため、名前をコード代わり、または空にする
+                    jma_code: loc.jma_code || "manual"
+                  })}
+                  placeholder="市区町村名を入力"
                   className="w-full bg-gray-50 rounded-xl px-4 py-3 font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500/20"
-                  disabled={loc.prefecture === "未設定"}
-                >
-                  <option value="">市区町村を選択してください</option>
-                  {locationMaster.find(p => p.pref === loc.prefecture)?.cities.map(c => (
-                    <option key={c.code} value={c.code}>{c.name}</option>
-                  ))}
-                </select>
+                />
               </div>
             </div>
 
