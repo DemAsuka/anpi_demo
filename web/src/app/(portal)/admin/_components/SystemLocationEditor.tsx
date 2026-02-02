@@ -22,11 +22,60 @@ export function SystemLocationEditor({ initialLocations }: { initialLocations: S
   const [loading, setLoading] = useState<string | null>(null);
   const supabase = createSupabaseBrowserClient();
 
+  const findJmaMatch = (prefInput: string, cityInput: string) => {
+    if (!prefInput || !cityInput) return null;
+    const prefData = locationMaster.find(p => 
+      p.pref.includes(prefInput) || prefInput.includes(p.pref)
+    );
+    if (!prefData) return null;
+    const cityData = prefData.cities.find((c: any) => 
+      c.name.includes(cityInput) || cityInput.includes(c.name)
+    );
+    if (!cityData) return null;
+    return {
+      prefecture: prefData.pref,
+      city: (cityData as any).name,
+      jma_code: (cityData as any).code,
+      jma_name: (cityData as any).name,
+      jma_area_name: (cityData as any).area_name,
+      jma_area_code: (cityData as any).area_code
+    };
+  };
+
   const handleUpdate = async (id: string, updates: Partial<SystemLocation>) => {
+    // もし都道府県か市区町村が変更された場合、自動マッチングを試みる
+    let finalUpdates = { ...updates };
+    const currentLocation = locations.find(l => l.id === id);
+    if (currentLocation && (updates.prefecture !== undefined || updates.city !== undefined)) {
+      const pref = updates.prefecture !== undefined ? updates.prefecture : currentLocation.prefecture;
+      const city = updates.city !== undefined ? updates.city : currentLocation.city;
+      const match = findJmaMatch(pref, city);
+      if (match) {
+        finalUpdates = {
+          ...finalUpdates,
+          prefecture: match.prefecture,
+          city: match.jma_name,
+          jma_code: match.jma_code,
+          jma_name: match.jma_name,
+          jma_area_name: match.jma_area_name,
+          jma_area_code: match.jma_area_code
+        };
+      } else {
+        // マッチしない場合は、以前のマッチ情報をクリアする（ただし市区町村が空でない場合のみ警告用）
+        finalUpdates = {
+          ...finalUpdates,
+          jma_code: "",
+          jma_name: "",
+          jma_area_name: "",
+          jma_area_code: ""
+        };
+      }
+    }
+
     setLoading(id);
     const { data, error } = await supabase
       .from("system_locations")
-      .update(updates)
+      .update(finalUpdates)
       .eq("id", id)
       .select()
       .single();
@@ -43,10 +92,12 @@ export function SystemLocationEditor({ initialLocations }: { initialLocations: S
       .from("system_locations")
       .insert({
         label: "新規地点",
-        prefecture: "未設定",
-        city: "未設定",
+        prefecture: "",
+        city: "",
         jma_code: "",
         jma_name: "",
+        jma_area_name: "",
+        jma_area_code: "",
         is_permanent: false
       })
       .select()
@@ -111,17 +162,16 @@ export function SystemLocationEditor({ initialLocations }: { initialLocations: S
                 <input
                   type="text"
                   value={loc.city}
-                  onChange={(e) => handleUpdate(loc.id, { 
-                    city: e.target.value,
-                    jma_name: e.target.value,
-                    // 自由入力時はコードが不明なため、名前をコード代わり、または空にする
-                    jma_code: loc.jma_code || "manual"
-                  })}
+                  onChange={(e) => handleUpdate(loc.id, { city: e.target.value })}
                   placeholder="市区町村名を入力"
                   className="w-full bg-gray-50 rounded-xl px-4 py-3 font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
             </div>
+
+            {loc.prefecture && loc.city && !loc.jma_code && (
+              <p className="text-[10px] font-bold text-red-500 mt-1">⚠️ 地点を特定できません。都道府県名と市区町村名を正しく入力してください。</p>
+            )}
 
             {loc.jma_name && (
               <div className="bg-blue-50 rounded-2xl p-4 space-y-2">

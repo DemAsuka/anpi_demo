@@ -56,7 +56,7 @@ export function LocationSettings({
   const [newLoc, setNewLoc] = useState({
     location_type: "parents",
     display_name: "",
-    prefecture: "未設定",
+    prefecture: "",
     city: "",
     jma_code: "",
     jma_name: "",
@@ -66,7 +66,7 @@ export function LocationSettings({
 
   const [newSysLoc, setNewSysLoc] = useState({
     label: "",
-    prefecture: "未設定",
+    prefecture: "",
     city: "",
     jma_code: "",
     jma_name: "",
@@ -76,11 +76,41 @@ export function LocationSettings({
     is_permanent: false
   });
 
+  const findJmaMatch = (prefInput: string, cityInput: string) => {
+    if (!prefInput || !cityInput) return null;
+    
+    // 都道府県を探す（「東京都」と「東京」の両方に対応できるよう「含む」で判定）
+    const prefData = locationMaster.find(p => 
+      p.pref.includes(prefInput) || prefInput.includes(p.pref)
+    );
+    
+    if (!prefData) return null;
+    
+    // 市区町村を探す（「新宿区」と「新宿」の両方に対応できるよう「含む」で判定）
+    const cityData = prefData.cities.find((c: any) => 
+      c.name.includes(cityInput) || cityInput.includes(c.name)
+    );
+    
+    if (!cityData) return null;
+    
+    return {
+      prefecture: prefData.pref,
+      city: (cityData as any).name,
+      jma_code: (cityData as any).code,
+      jma_name: (cityData as any).name,
+      jma_area_name: (cityData as any).area_name,
+      jma_area_code: (cityData as any).area_code
+    };
+  };
+
+  const matchedNewLoc = findJmaMatch(newLoc.prefecture, newLoc.city);
+  const matchedNewSysLoc = findJmaMatch(newSysLoc.prefecture, newSysLoc.city);
+
   const supabase = createSupabaseBrowserClient();
 
   const handleAdd = async () => {
-    if (!newLoc.display_name || !newLoc.jma_code) {
-      alert("すべての項目を選択してください。");
+    if (!newLoc.display_name || !matchedNewLoc) {
+      alert("地点を正しく入力し、判定が成功してから保存してください。");
       return;
     }
     setLoading(true);
@@ -94,12 +124,12 @@ export function LocationSettings({
         user_id: userId,
         location_type: newLoc.location_type,
         display_name: newLoc.display_name,
-        prefecture: newLoc.prefecture,
-        city: newLoc.jma_name,
-        jma_code: newLoc.jma_code,
-        jma_name: newLoc.jma_name,
-        jma_area_name: newLoc.jma_area_name,
-        jma_area_code: newLoc.jma_area_code,
+        prefecture: matchedNewLoc.prefecture,
+        city: matchedNewLoc.jma_name,
+        jma_code: matchedNewLoc.jma_code,
+        jma_name: matchedNewLoc.jma_name,
+        jma_area_name: matchedNewLoc.jma_area_name,
+        jma_area_code: matchedNewLoc.jma_area_code,
         sort_order: nextOrder
       })
       .select()
@@ -111,7 +141,7 @@ export function LocationSettings({
       setNewLoc({ 
         location_type: "parents", 
         display_name: "", 
-        prefecture: "未設定", 
+        prefecture: "", 
         city: "", 
         jma_code: "", 
         jma_name: "",
@@ -126,8 +156,8 @@ export function LocationSettings({
   };
 
   const handleAddSys = async () => {
-    if (!newSysLoc.label || !newSysLoc.jma_code) {
-      alert("ラベルと地点を選択してください。");
+    if (!newSysLoc.label || !matchedNewSysLoc) {
+      alert("地点を正しく入力し、判定が成功してから保存してください。");
       return;
     }
     setLoading(true);
@@ -138,12 +168,12 @@ export function LocationSettings({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           label: newSysLoc.label,
-          prefecture: newSysLoc.prefecture,
-          city: newSysLoc.jma_name,
-          jma_code: newSysLoc.jma_code,
-          jma_name: newSysLoc.jma_name,
-          jma_area_name: newSysLoc.jma_area_name,
-          jma_area_code: newSysLoc.jma_area_code,
+          prefecture: matchedNewSysLoc.prefecture,
+          city: matchedNewSysLoc.jma_name,
+          jma_code: matchedNewSysLoc.jma_code,
+          jma_name: matchedNewSysLoc.jma_name,
+          jma_area_name: matchedNewSysLoc.jma_area_name,
+          jma_area_code: matchedNewSysLoc.jma_area_code,
           target_group: newSysLoc.target_group,
           is_permanent: newSysLoc.is_permanent
         })
@@ -159,7 +189,7 @@ export function LocationSettings({
       setIsAddingSys(false);
       setNewSysLoc({ 
         label: "", 
-        prefecture: "未設定", 
+        prefecture: "", 
         city: "", 
         jma_code: "", 
         jma_name: "", 
@@ -322,9 +352,7 @@ export function LocationSettings({
                   value={newSysLoc.city}
                   onChange={e => setNewSysLoc({
                     ...newSysLoc, 
-                    city: e.target.value,
-                    jma_name: e.target.value,
-                    jma_code: "manual"
+                    city: e.target.value
                   })}
                   placeholder="市区町村を入力"
                   className="w-full bg-white border-2 border-gray-100 rounded-xl px-4 py-2 font-bold focus:border-red-500 outline-none transition-colors"
@@ -332,20 +360,24 @@ export function LocationSettings({
               </div>
             </div>
 
-            {newSysLoc.jma_name && (
+            {newSysLoc.prefecture && newSysLoc.city && !matchedNewSysLoc && (
+              <p className="text-[10px] font-bold text-red-500 mt-1">⚠️ 地点を特定できません。都道府県名と市区町村名を正しく入力してください。</p>
+            )}
+
+            {matchedNewSysLoc && (
               <div className="bg-red-50 rounded-2xl p-4 space-y-2">
                 <div className="flex items-center gap-3">
                   <span className="text-xl">📡</span>
                   <div>
                     <div className="text-[10px] font-black text-red-400 uppercase tracking-wider">該当JMA判定地点（地震用）</div>
-                    <div className="text-sm font-black text-red-600">{newSysLoc.jma_name} ({newSysLoc.jma_code})</div>
+                    <div className="text-sm font-black text-red-600">{matchedNewSysLoc.jma_name} ({matchedNewSysLoc.jma_code})</div>
                   </div>
                 </div>
-                {newSysLoc.jma_area_name && (
+                {matchedNewSysLoc.jma_area_name && (
                   <div className="flex items-center gap-3 ml-8 pt-2 border-t border-red-100">
                     <div>
                       <div className="text-[10px] font-black text-red-400 uppercase tracking-wider">監視エリア（警報用）</div>
-                      <div className="text-sm font-black text-red-500">{newSysLoc.jma_area_name}</div>
+                      <div className="text-sm font-black text-red-500">{matchedNewSysLoc.jma_area_name}</div>
                     </div>
                   </div>
                 )}
@@ -360,7 +392,7 @@ export function LocationSettings({
               </button>
               <button 
                 onClick={handleAddSys} 
-                disabled={loading}
+                disabled={loading || !matchedNewSysLoc}
                 className="bg-red-600 text-white px-8 py-2 rounded-xl font-bold hover:bg-red-700 transition-colors shadow-lg shadow-blue-100 disabled:opacity-50"
               >
                 {loading ? "保存中..." : "保存する"}
@@ -448,9 +480,7 @@ export function LocationSettings({
                   value={newLoc.city}
                   onChange={e => setNewLoc({
                     ...newLoc, 
-                    city: e.target.value,
-                    jma_name: e.target.value,
-                    jma_code: "manual"
+                    city: e.target.value
                   })}
                   placeholder="市区町村を入力"
                   className="w-full bg-white border-2 border-gray-100 rounded-xl px-4 py-2 font-bold focus:border-blue-500 outline-none transition-colors"
@@ -458,20 +488,24 @@ export function LocationSettings({
               </div>
             </div>
 
-            {newLoc.jma_name && (
+            {newLoc.prefecture && newLoc.city && !matchedNewLoc && (
+              <p className="text-[10px] font-bold text-red-500 mt-1">⚠️ 地点を特定できません。都道府県名と市区町村名を正しく入力してください。</p>
+            )}
+
+            {matchedNewLoc && (
               <div className="bg-blue-50 rounded-2xl p-4 space-y-2">
                 <div className="flex items-center gap-3">
                   <span className="text-xl">📡</span>
                   <div>
                     <div className="text-[10px] font-black text-blue-400 uppercase tracking-wider">該当JMA判定地点（地震用）</div>
-                    <div className="text-sm font-black text-blue-600">{newLoc.jma_name} ({newLoc.jma_code})</div>
+                    <div className="text-sm font-black text-blue-600">{matchedNewLoc.jma_name} ({matchedNewLoc.jma_code})</div>
                   </div>
                 </div>
-                {newLoc.jma_area_name && (
+                {matchedNewLoc.jma_area_name && (
                   <div className="flex items-center gap-3 ml-8 pt-2 border-t border-blue-100">
                     <div>
                       <div className="text-[10px] font-black text-blue-400 uppercase tracking-wider">監視エリア（警報用）</div>
-                      <div className="text-sm font-black text-blue-500">{newLoc.jma_area_name}</div>
+                      <div className="text-sm font-black text-blue-500">{matchedNewLoc.jma_area_name}</div>
                     </div>
                   </div>
                 )}
@@ -486,7 +520,7 @@ export function LocationSettings({
               </button>
               <button 
                 onClick={handleAdd}
-                disabled={loading}
+                disabled={loading || !matchedNewLoc}
                 className="bg-blue-600 text-white px-8 py-2 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-100 disabled:opacity-50"
               >
                 保存する
