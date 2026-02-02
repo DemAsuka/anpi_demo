@@ -396,6 +396,11 @@ async function createIncidentAndNotify(
           actualAreasInXml.push(...extractNames(body.Intensity));
         }
 
+        // --- 気象情報の解析 (MeteorologicalInfos) ---
+        if (body.MeteorologicalInfos) {
+          actualAreasInXml.push(...extractNames(body.MeteorologicalInfos));
+        }
+
         // 重複削除と空文字の除外
         actualAreasInXml = Array.from(new Set(actualAreasInXml.filter(n => n && n.length > 0)));
 
