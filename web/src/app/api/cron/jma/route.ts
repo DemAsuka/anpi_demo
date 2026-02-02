@@ -338,6 +338,7 @@ async function createIncidentAndNotify(
   let magnitude = "確認中";
   let tsunamiText = "";
   let matchedLocations: string[] = [];
+  let actualAreasInXml: string[] = []; // XMLに含まれる実際のエリア名
   const mentionList: string[] = [];
 
   try {
@@ -349,26 +350,13 @@ async function createIncidentAndNotify(
       const body = doc?.Report?.Body;
 
       if (body) {
-        // 最大震度
-        maxInt = body.Intensity?.Observation?.MaxInt || maxInt;
+        // ... (中略: maxInt, epicenter 等の解析) ...
         
-        // 震源地情報
-        const eq = body.Earthquake;
-        if (eq) {
-          epicenter = eq.Hypocenter?.Area?.Name || epicenter;
-          magnitude = eq["jmx_eb:Magnitude"]?.["#text"] || eq["jmx_eb:Magnitude"] || magnitude;
-          const coordDesc = eq.Hypocenter?.Area?.["jmx_eb:Coordinate"]?.["@_description"] || "";
-          if (coordDesc.includes("深さ")) {
-            depth = coordDesc.split("深さ")[1].trim();
-          }
-        }
-
-        // 津波情報
-        tsunamiText = body.Comments?.ForecastComment?.Text || "";
-
-        // 地点マッチング
+        // 地点マッチング用のセット
         const cities = new Set<string>();
         const areasInXml = new Set<string>();
+        
+        // --- 震度情報の解析 (Intensity) ---
         const prefs = asUnknownArray(body.Intensity?.Observation?.Pref);
         for (const pref of prefs) {
           if (!isRecord(pref)) continue;
@@ -376,16 +364,38 @@ async function createIncidentAndNotify(
           for (const area of areas) {
             if (!isRecord(area)) continue;
             if (area.Name) {
-              areasInXml.add(asString(area.Name) || "");
+              const name = asString(area.Name) || "";
+              areasInXml.add(name);
+              actualAreasInXml.push(name);
             }
             const cityNodes = asUnknownArray(area.City);
             for (const city of cityNodes) {
               if (isRecord(city) && city.Name) {
-                cities.add(asString(city.Name) || "");
+                const name = asString(city.Name) || "";
+                cities.add(name);
+                actualAreasInXml.push(name);
               }
             }
           }
         }
+
+        // --- 気象警報・注意報の解析 (Warning) ---
+        const warningItems = asUnknownArray(body.Warning?.Item);
+        for (const item of warningItems) {
+          if (!isRecord(item)) continue;
+          const areas = asUnknownArray(item.Area);
+          for (const area of areas) {
+            if (!isRecord(area)) continue;
+            if (area.Name) {
+              const name = asString(area.Name) || "";
+              areasInXml.add(name);
+              actualAreasInXml.push(name);
+            }
+          }
+        }
+
+        // 重複削除
+        actualAreasInXml = Array.from(new Set(actualAreasInXml));
 
         // 登録地点（システム・ユーザー）を取得
         const [{ data: sysLocs }, { data: userLocs }] = await Promise.all([
@@ -489,7 +499,11 @@ async function createIncidentAndNotify(
 
   // 登録地点ごとの警報発表メッセージ（地震以外）
   const locationAlerts = rule.menu_type !== "earthquake" 
-    ? matchedLocations.map(loc => `*${loc}にて${entry.title}が発表されています。*`)
+    ? (matchedLocations.length > 0 && !matchedLocations.includes("デモ用全国通知（試験環境）")
+        ? matchedLocations.map(loc => `*${loc}にて${entry.title}が発表されています。*`)
+        : actualAreasInXml.length > 0 
+          ? [`*${actualAreasInXml.slice(0, 5).join("、")}${actualAreasInXml.length > 5 ? `ほか${actualAreasInXml.length - 5}地点` : ""}にて${entry.title}が発表されています。*`]
+          : [`*対象の登録地点：${matchedLocations.join("、")}*`])
     : [];
 
   // メンション先がある場合、メッセージの先頭に追加
