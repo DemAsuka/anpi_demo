@@ -81,14 +81,14 @@ export function LocationSettings({
     
     // 都道府県を探す（「東京都」と「東京」の両方に対応できるよう「含む」で判定）
     const prefData = locationMaster.find(p => 
-      p.pref.includes(prefInput) || prefInput.includes(p.pref)
+      p.pref.includes(prefInput) || prefInput.includes(p.pref.replace(/都|道|府|県$/, ""))
     );
     
     if (!prefData) return null;
     
     // 市区町村を探す（「新宿区」と「新宿」の両方に対応できるよう「含む」で判定）
     const cityData = prefData.cities.find((c: any) => 
-      c.name.includes(cityInput) || cityInput.includes(c.name)
+      c.name.includes(cityInput) || cityInput.includes(c.name.replace(/市|区|町|村$/, ""))
     );
     
     if (!cityData) return null;
