@@ -118,25 +118,30 @@ export function LocationSettings({
     const usedOrders = locations.map(l => l.sort_order);
     const nextOrder = usedOrders.length > 0 ? Math.max(...usedOrders, 70) + 1 : 71;
 
+    const payload = {
+      user_id: userId,
+      location_type: newLoc.location_type,
+      display_name: newLoc.display_name,
+      prefecture: matchedNewLoc.prefecture,
+      city: matchedNewLoc.jma_name,
+      jma_code: matchedNewLoc.jma_code,
+      jma_name: matchedNewLoc.jma_name,
+      jma_area_name: matchedNewLoc.jma_area_name,
+      jma_area_code: matchedNewLoc.jma_area_code,
+      sort_order: nextOrder
+    };
+
+    console.log("Adding user location with payload:", payload);
+
     const { data, error } = await supabase
       .from("user_locations")
-      .insert({
-        user_id: userId,
-        location_type: newLoc.location_type,
-        display_name: newLoc.display_name,
-        prefecture: matchedNewLoc.prefecture,
-        city: matchedNewLoc.jma_name,
-        jma_code: matchedNewLoc.jma_code,
-        jma_name: matchedNewLoc.jma_name,
-        jma_area_name: matchedNewLoc.jma_area_name,
-        jma_area_code: matchedNewLoc.jma_area_code,
-        sort_order: nextOrder
-      })
+      .insert(payload)
       .select()
       .single();
 
     if (!error && data) {
-      setLocations([...locations, data]);
+      console.log("Successfully added location:", data);
+      setLocations(prev => [...prev, data]);
       setIsAdding(false);
       setNewLoc({ 
         location_type: "parents", 
@@ -150,7 +155,7 @@ export function LocationSettings({
       });
     } else {
       console.error("Supabase error:", error);
-      alert("個人の地点登録に失敗しました。");
+      alert(`個人の地点登録に失敗しました: ${error?.message || "不明なエラー"}`);
     }
     setLoading(false);
   };
@@ -163,20 +168,24 @@ export function LocationSettings({
     setLoading(true);
 
     try {
+      const payload = {
+        label: newSysLoc.label,
+        prefecture: matchedNewSysLoc.prefecture,
+        city: matchedNewSysLoc.jma_name,
+        jma_code: matchedNewSysLoc.jma_code,
+        jma_name: matchedNewSysLoc.jma_name,
+        jma_area_name: matchedNewSysLoc.jma_area_name,
+        jma_area_code: matchedNewSysLoc.jma_area_code,
+        target_group: newSysLoc.target_group,
+        is_permanent: newSysLoc.is_permanent
+      };
+
+      console.log("Adding system location with payload:", payload);
+
       const res = await fetch("/api/admin/system-locations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          label: newSysLoc.label,
-          prefecture: matchedNewSysLoc.prefecture,
-          city: matchedNewSysLoc.jma_name,
-          jma_code: matchedNewSysLoc.jma_code,
-          jma_name: matchedNewSysLoc.jma_name,
-          jma_area_name: matchedNewSysLoc.jma_area_name,
-          jma_area_code: matchedNewSysLoc.jma_area_code,
-          target_group: newSysLoc.target_group,
-          is_permanent: newSysLoc.is_permanent
-        })
+        body: JSON.stringify(payload)
       });
 
       if (!res.ok) {
@@ -185,7 +194,8 @@ export function LocationSettings({
       }
 
       const data = await res.json();
-      setSysLocations([...sysLocations, data]);
+      console.log("Successfully added system location:", data);
+      setSysLocations(prev => [...prev, data]);
       setIsAddingSys(false);
       setNewSysLoc({ 
         label: "", 
