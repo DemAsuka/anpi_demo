@@ -275,7 +275,7 @@ export function LocationSettings({
                   <span className="text-sm font-bold text-gray-900">{loc.label}</span>
                   {isEditingAllowed && <span className="text-[10px] text-gray-300 font-mono">#{loc.sort_order}</span>}
                 </div>
-                <p className="text-sm text-gray-700 font-bold">{loc.prefecture} {loc.city}</p>
+                <p className="text-sm text-gray-700 font-bold">{loc.prefecture} {loc.city || loc.jma_name}</p>
                 {!isEditingAllowed && (
                   <p className="text-[10px] text-gray-400 font-medium">
                     {loc.is_permanent ? "システム管理者により設定されています" : "期間限定の通知対象地点です"}
@@ -415,7 +415,7 @@ export function LocationSettings({
                   </span>
                   <span className="text-sm font-bold text-gray-900">{loc.display_name}</span>
                 </div>
-                <p className="text-sm text-gray-500 font-medium">{loc.prefecture} {loc.city}</p>
+                <p className="text-sm text-gray-500 font-medium">{loc.prefecture} {loc.city || loc.jma_name}</p>
               </div>
               <button 
                 onClick={() => handleDelete(loc.id)}
