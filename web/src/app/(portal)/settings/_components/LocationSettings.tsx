@@ -290,7 +290,7 @@ export function LocationSettings({
                   {isEditingAllowed && <span className="text-[10px] text-gray-300 font-mono">#{loc.sort_order}</span>}
                 </div>
                 <p className="text-sm text-gray-700 font-bold">
-                  {loc.prefecture || ""} {loc.city || (loc as any).jma_name || (loc as any).display_name || (loc as any).label || "(地点未設定)"}
+                  {loc.prefecture ? `${loc.prefecture} ` : ""}{loc.city || (loc as any).jma_name || (loc as any).display_name || "(地点未設定)"}
                 </p>
                 {!isEditingAllowed && (
                   <p className="text-[10px] text-gray-400 font-medium">
@@ -432,7 +432,7 @@ export function LocationSettings({
                   <span className="text-sm font-bold text-gray-900">{loc.display_name}</span>
                 </div>
                 <p className="text-sm text-gray-500 font-medium">
-                  {loc.prefecture || ""} {loc.city || (loc as any).jma_name || (loc as any).display_name || (loc as any).label || "(地点未設定)"}
+                  {loc.prefecture ? `${loc.prefecture} ` : ""}{loc.city || (loc as any).jma_name || (loc as any).display_name || "(地点未設定)"}
                 </p>
               </div>
               <button 

@@ -19,7 +19,17 @@ export async function POST(req: Request) {
 
     try {
       const body = await req.json();
-      const { label, address, is_permanent, target_group } = body;
+      const { 
+        label, 
+        prefecture, 
+        city, 
+        jma_code, 
+        jma_name, 
+        jma_area_name, 
+        jma_area_code, 
+        is_permanent, 
+        target_group 
+      } = body;
 
       // 表示順の計算 (51-69, 下一桁0を除く18個分)
       const { data: existing } = await supabase
@@ -40,7 +50,12 @@ export async function POST(req: Request) {
         .from("system_locations")
         .insert({
           label,
-          city: address, 
+          prefecture,
+          city,
+          jma_code,
+          jma_name,
+          jma_area_name,
+          jma_area_code,
           is_permanent: is_permanent ?? false,
           target_group: target_group ?? "all",
           sort_order: nextOrder
