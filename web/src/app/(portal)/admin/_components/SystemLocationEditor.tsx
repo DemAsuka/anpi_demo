@@ -24,12 +24,14 @@ export function SystemLocationEditor({ initialLocations }: { initialLocations: S
 
   const findJmaMatch = (prefInput: string, cityInput: string) => {
     if (!prefInput || !cityInput) return null;
+    const pInput = prefInput.trim();
+    const cInput = cityInput.trim();
     const prefData = locationMaster.find(p => 
-      p.pref.includes(prefInput) || prefInput.includes(p.pref.replace(/都|道|府|県$/, ""))
+      p.pref.includes(pInput) || pInput.includes(p.pref.replace(/都|道|府|県$/, ""))
     );
     if (!prefData) return null;
     const cityData = prefData.cities.find((c: any) => 
-      c.name.includes(cityInput) || cityInput.includes(c.name.replace(/市|区|町|村$/, ""))
+      c.name.includes(cInput) || cInput.includes(c.name.replace(/市|区|町|村$/, ""))
     );
     if (!cityData) return null;
     return {

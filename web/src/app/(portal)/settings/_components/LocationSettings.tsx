@@ -79,16 +79,20 @@ export function LocationSettings({
   const findJmaMatch = (prefInput: string, cityInput: string) => {
     if (!prefInput || !cityInput) return null;
     
-    // 都道府県を探す（「東京都」と「東京」の両方に対応できるよう「含む」で判定）
+    // 入力値を正規化（前後の空白削除）
+    const pInput = prefInput.trim();
+    const cInput = cityInput.trim();
+
+    // 都道府県を探す
     const prefData = locationMaster.find(p => 
-      p.pref.includes(prefInput) || prefInput.includes(p.pref.replace(/都|道|府|県$/, ""))
+      p.pref.includes(pInput) || pInput.includes(p.pref.replace(/都|道|府|県$/, ""))
     );
     
     if (!prefData) return null;
     
-    // 市区町村を探す（「新宿区」と「新宿」の両方に対応できるよう「含む」で判定）
+    // 市区町村を探す
     const cityData = prefData.cities.find((c: any) => 
-      c.name.includes(cityInput) || cityInput.includes(c.name.replace(/市|区|町|村$/, ""))
+      c.name.includes(cInput) || cInput.includes(c.name.replace(/市|区|町|村$/, ""))
     );
     
     if (!cityData) return null;
@@ -170,8 +174,8 @@ export function LocationSettings({
     try {
       const payload = {
         label: newSysLoc.label,
-        prefecture: matchedNewSysLoc.prefecture,
-        city: matchedNewSysLoc.jma_name,
+        prefecture: matchedNewSysLoc.prefecture || newSysLoc.prefecture,
+        city: matchedNewSysLoc.jma_name || newSysLoc.city,
         jma_code: matchedNewSysLoc.jma_code,
         jma_name: matchedNewSysLoc.jma_name,
         jma_area_name: matchedNewSysLoc.jma_area_name,
@@ -285,7 +289,9 @@ export function LocationSettings({
                   <span className="text-sm font-bold text-gray-900">{loc.label}</span>
                   {isEditingAllowed && <span className="text-[10px] text-gray-300 font-mono">#{loc.sort_order}</span>}
                 </div>
-                <p className="text-sm text-gray-700 font-bold">{loc.prefecture} {(loc as any).city || (loc as any).jma_name || (loc as any).display_name}</p>
+                <p className="text-sm text-gray-700 font-bold">
+                  {loc.prefecture || ""} {loc.city || (loc as any).jma_name || (loc as any).display_name || (loc as any).label || "(地点未設定)"}
+                </p>
                 {!isEditingAllowed && (
                   <p className="text-[10px] text-gray-400 font-medium">
                     {loc.is_permanent ? "システム管理者により設定されています" : "期間限定の通知対象地点です"}
@@ -425,7 +431,9 @@ export function LocationSettings({
                   </span>
                   <span className="text-sm font-bold text-gray-900">{loc.display_name}</span>
                 </div>
-                <p className="text-sm text-gray-500 font-medium">{loc.prefecture} {(loc as any).city || (loc as any).jma_name || (loc as any).display_name}</p>
+                <p className="text-sm text-gray-500 font-medium">
+                  {loc.prefecture || ""} {loc.city || (loc as any).jma_name || (loc as any).display_name || (loc as any).label || "(地点未設定)"}
+                </p>
               </div>
               <button 
                 onClick={() => handleDelete(loc.id)}

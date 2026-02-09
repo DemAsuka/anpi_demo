@@ -388,17 +388,27 @@ async function createIncidentAndNotify(
 
         // --- 気象警報・注意報の解析 (Warning) ---
         if (body.Warning) {
-          actualAreasInXml.push(...extractNames(body.Warning));
+          const names = extractNames(body.Warning);
+          actualAreasInXml.push(...names);
+          names.forEach(n => areasInXml.add(n));
         }
 
         // --- 震度情報の解析 (Intensity) ---
         if (body.Intensity) {
-          actualAreasInXml.push(...extractNames(body.Intensity));
+          const names = extractNames(body.Intensity);
+          actualAreasInXml.push(...names);
+          names.forEach(n => cities.add(n)); // 震度情報の地点は市区町村
         }
 
         // --- 気象情報の解析 (MeteorologicalInfos) ---
         if (body.MeteorologicalInfos) {
-          actualAreasInXml.push(...extractNames(body.MeteorologicalInfos));
+          const names = extractNames(body.MeteorologicalInfos);
+          actualAreasInXml.push(...names);
+          names.forEach(n => {
+            // どちらの可能性もあるため両方に入れる
+            cities.add(n);
+            areasInXml.add(n);
+          });
         }
 
         // 重複削除と空文字の除外
