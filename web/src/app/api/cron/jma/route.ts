@@ -280,50 +280,51 @@ async function createIncidentAndNotify(
         }
         if (body.Tsunami) tsunamiText = "【津波情報】津波警報・注意報が発表されています。海岸付近から離れてください。";
 
-        const extractAreaDetails = (obj: any): Map<string, Set<string>> => {
-          const areaMap = new Map<string, Set<string>>();
-          if (!obj || typeof obj !== "object") return areaMap;
+        // --- 詳細情報の抽出ロジック ---
+        const areaDetails = new Map<string, Set<string>>();
+        const extractDetails = (obj: any) => {
+          if (!obj || typeof obj !== "object") return;
           if (Array.isArray(obj)) {
-            obj.forEach(item => {
-              extractAreaDetails(item).forEach((v, k) => {
-                if (!areaMap.has(k)) areaMap.set(k, new Set());
-                v.forEach(ki => areaMap.get(k)?.add(ki));
-              });
-            });
+            obj.forEach(extractDetails);
           } else {
+            // AreaとKindがセットになっている場合 (Warningなど)
             if (obj.Area && obj.Kind) {
               const areas = asUnknownArray(obj.Area);
               const kinds = asUnknownArray(obj.Kind).map(k => isRecord(k) ? asString(k.Name) : null).filter(Boolean) as string[];
               areas.forEach(a => {
-                if (isRecord(a) && a.Name) {
-                  const n = asString(a.Name);
-                  if (n) {
-                    if (!areaMap.has(n)) areaMap.set(n, new Set());
-                    kinds.forEach(k => areaMap.get(n)?.add(k));
-                  }
+                const n = isRecord(a) ? asString(a.Name) : null;
+                if (n) {
+                  if (!areaDetails.has(n)) areaDetails.set(n, new Set());
+                  kinds.forEach(k => areaDetails.get(n)?.add(k));
                 }
               });
             }
-            Object.keys(obj).forEach(key => {
-              if (key !== "Area" && key !== "Kind") {
-                extractAreaDetails(obj[key]).forEach((v, k) => {
-                  if (!areaMap.has(k)) areaMap.set(k, new Set());
-                  v.forEach(ki => areaMap.get(k)?.add(ki));
-                });
-              }
+            // MeteorologicalInfos などの Property 構造
+            if (obj.Area && obj.Property) {
+              const areas = asUnknownArray(obj.Area);
+              const properties = asUnknownArray(obj.Property);
+              areas.forEach(a => {
+                const n = isRecord(a) ? asString(a.Name) : null;
+                if (n) {
+                  if (!areaDetails.has(n)) areaDetails.set(n, new Set());
+                  properties.forEach(p => {
+                    if (isRecord(p) && p.Type) {
+                      const t = asString(p.Type);
+                      if (t) areaDetails.get(n)?.add(t);
+                    }
+                  });
+                }
+              });
+            }
+            Object.keys(obj).forEach(k => {
+              if (k !== "Area" && k !== "Kind" && k !== "Property") extractDetails(obj[k]);
             });
           }
-          return areaMap;
         };
 
-        const areaDetails = new Map<string, Set<string>>();
-        const merge = (m: Map<string, Set<string>>) => m.forEach((v, k) => {
-          if (!areaDetails.has(k)) areaDetails.set(k, new Set());
-          v.forEach(ki => areaDetails.get(k)?.add(ki));
-        });
-        if (body.Warning) merge(extractAreaDetails(body.Warning));
-        if (body.Intensity) merge(extractAreaDetails(body.Intensity));
-        if (body.MeteorologicalInfos) merge(extractAreaDetails(body.MeteorologicalInfos));
+        if (body.Warning) extractDetails(body.Warning);
+        if (body.Intensity) extractDetails(body.Intensity);
+        if (body.MeteorologicalInfos) extractDetails(body.MeteorologicalInfos);
 
         actualAreasInXml = Array.from(areaDetails.keys());
         const areasInXml = new Set(actualAreasInXml);
@@ -359,38 +360,34 @@ async function createIncidentAndNotify(
         const eqInfo = isEarthquake ? [`最大震度：震度${maxInt}`, `震源地：${epicenter}`, `（M${magnitude} / 深さ：${depth}）`] : [];
         const contentText = (entry.raw as any)?.content?.['#text'] || (entry.raw as any)?.headline?.['#text'] || "";
 
-        if (matchedSys.length > 0) {
-          const targetSummary = matchedSys.map((l: any) => `${l.label}(${l.city})`).join("、");
-          const alerts = !isEarthquake ? matchedSys.map((l: any) => {
-            const k = getKinds(l);
-            return `*${l.label}(${l.city})にて${k.length > 0 ? `【${k.join("、")}】` : entry.title}が発表されています。*`;
-          }) : [];
+        // --- 1. システム地点（全社共通）の通知：地点ごとに送信 ---
+        for (const l of matchedSys) {
+          const k = getKinds(l);
+          const alerts = !isEarthquake ? [`*${l.label}(${l.city})にて${k.length > 0 ? `【${k.join("、")}】` : entry.title}が発表されています。*`] : [];
+          const targetSummary = `${l.label}(${l.city})`;
+          
           await sendNotification({
             mode, mentions: ["<!here>"],
             text: buildMessage(prefix, alerts, eqInfo, rule.template, entry.title, contentText, maxInt, targetSummary, tsunamiText, eventTime, mode)
           });
         }
 
-        const userGroups = new Map<string, any[]>();
-        matchedUsers.forEach((l: any) => {
-          if (!userGroups.has(l.user_id)) userGroups.set(l.user_id, []);
-          userGroups.get(l.user_id)?.push(l);
-        });
-
-        for (const [uid, locs] of Array.from(userGroups.entries())) {
-          const targetSummary = locs.map((l: any) => `${l.display_name}(${l.city})`).join("、");
-          const alerts = !isEarthquake ? locs.map((l: any) => {
-            const k = getKinds(l);
-            return `*${l.display_name}(${l.city})にて${k.length > 0 ? `【${k.join("、")}】` : entry.title}が発表されています。*`;
-          }) : [];
-          const { data: prof } = await supabase.from("profiles").select("slack_user_id").eq("id", uid).single();
+        // --- 2. ユーザー個別地点の通知：ユーザーごと・地点ごとに送信 ---
+        for (const l of matchedUsers) {
+          const k = getKinds(l);
+          const alerts = !isEarthquake ? [`*${l.display_name}(${l.city})にて${k.length > 0 ? `【${k.join("、")}】` : entry.title}が発表されています。*`] : [];
+          const targetSummary = `${l.display_name}(${l.city})`;
+          
+          const { data: prof } = await supabase.from("profiles").select("slack_user_id").eq("id", l.user_id).single();
+          
           await sendNotification({
             mode, mentions: prof?.slack_user_id ? [`<@${prof.slack_user_id}>`] : undefined,
             text: buildMessage(prefix, alerts, eqInfo, rule.template, entry.title, contentText, maxInt, targetSummary, tsunamiText, eventTime, mode)
           });
         }
 
-        if (mode === "test" && matchedSys.length === 0 && userGroups.size === 0) {
+        // --- 3. テストモードでマッチしなかった場合の全体通知 ---
+        if (mode === "test" && matchedSys.length === 0 && matchedUsers.length === 0) {
           const targetSummary = actualAreasInXml.length > 0 ? actualAreasInXml.slice(0, 5).join("、") + (actualAreasInXml.length > 5 ? `ほか${actualAreasInXml.length - 5}地点` : "") : "デモ用全国通知（試験環境）";
           const alerts = !isEarthquake ? [`*${targetSummary}にて${entry.title}が発表されています。*`] : [];
           await sendNotification({
