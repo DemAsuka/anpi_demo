@@ -305,15 +305,55 @@ async function createIncidentAndNotify(
   rule: any,
   mode: "production" | "test"
 ) {
-  // Check for duplicate incident for this entry AND mode
-  const { data: existingIncident } = await supabase
-    .from("incidents")
-    .select("id")
-    .eq("jma_entry_key", entry.entryKey)
-    .eq("mode", mode)
-    .single();
+  const rawAtom = entry.raw as any;
+  const eventId = rawAtom?.eventID;
+  const infoType = rawAtom?.infoType;
 
-  if (existingIncident) return;
+  // --- 重複・格上げ判定ロジック ---
+  if (eventId) {
+    // 同じEventIDの過去の通知を取得
+    const { data: pastIncidents } = await supabase
+      .from("incidents")
+      .select("info_type, created_at")
+      .eq("event_id", eventId)
+      .eq("mode", mode)
+      .order("created_at", { ascending: false });
+
+    if (pastIncidents && pastIncidents.length > 0) {
+      // 既に同じ情報の種類（infoType）で通知済みならスキップ
+      if (pastIncidents.some((i: any) => i.info_type === infoType)) {
+        return;
+      }
+
+      // 格上げ判定（地震の場合）
+      if (rule.menu_type === "earthquake") {
+        // VXSE51 (震度速報) -> VXSE53 (震源・震度情報) は格上げとして扱う
+        const hasDetailedReport = pastIncidents.some((i: any) => i.info_type === "VXSE53");
+        if (hasDetailedReport) return; // 既に詳細報を送っていれば、以後の情報は不要
+        
+        // 既に速報(51)を送っていて、今回も速報(51)なら上で弾かれている。
+        // ここに来るのは「まだ詳細(53)を送っていない」ケースのみ。
+      }
+
+      // 格上げ判定（気象警報の場合）
+      if (rule.menu_type === "flood" || rule.menu_type === "heavy_rain") {
+        // 気象警報は infoType だけでは判定が難しいため、
+        // 今回は「新しい infoType（電文種別）が来たら送る」というシンプルなロジックにする
+        // (注意報 VPWW40 と 警報 VPWW40 は同じ infoType になることがあるため、
+        // 本来は内容の解析が必要だが、まずは EventID + infoType の重複排除を優先)
+      }
+    }
+  } else {
+    // EventIDがない古い形式などの場合は、従来通り entryKey で重複チェック
+    const { data: existingIncident } = await supabase
+      .from("incidents")
+      .select("id")
+      .eq("jma_entry_key", entry.entryKey)
+      .eq("mode", mode)
+      .single();
+
+    if (existingIncident) return;
+  }
 
   const { data: incident, error: incError } = await supabase
     .from("incidents")
@@ -325,6 +365,8 @@ async function createIncidentAndNotify(
       is_drill: mode === "test",
       mode: mode,
       slack_channel: rule.slack_channel ?? "dm",
+      event_id: (entry.raw as any)?.eventID || null,
+      info_type: (entry.raw as any)?.infoType || null,
     })
     .select()
     .single();
