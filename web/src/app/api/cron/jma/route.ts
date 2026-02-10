@@ -350,7 +350,33 @@ async function createIncidentAndNotify(
       const body = doc?.Report?.Body;
 
       if (body) {
-        // ... (中略: maxInt, epicenter 等の解析) ...
+        // --- 震度情報の解析 (Intensity) ---
+        if (body.Intensity) {
+          const obs = body.Intensity.Observation;
+          if (obs) {
+            maxInt = obs.MaxInt || maxInt;
+          }
+        }
+
+        // --- 地震情報の解析 (Earthquake) ---
+        const earthquake = body.Earthquake;
+        if (earthquake) {
+          epicenter = earthquake.Hypocenter?.Area?.Name || epicenter;
+          magnitude = earthquake.Magnitude || magnitude;
+          
+          const depthNode = earthquake.Hypocenter?.Area?.['jmx_eb:Depth'];
+          if (depthNode) {
+            const depthVal = depthNode['#text'] || depthNode;
+            if (typeof depthVal === 'string') {
+              depth = depthVal.replace('km', '') + 'km';
+            }
+          }
+        }
+
+        // --- 津波情報の解析 ---
+        if (body.Tsunami) {
+          tsunamiText = "【津波情報】津波警報・注意報が発表されています。海岸付近から離れてください。";
+        }
         
         // 地点マッチング用のセット
         const cities = new Set<string>();
