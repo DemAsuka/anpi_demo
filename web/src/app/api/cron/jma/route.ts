@@ -342,13 +342,13 @@ async function createIncidentAndNotify(
           return Array.from(kinds);
         };
 
-        const matchedSys = (sysLocs || []).filter(l => {
+        const matchedSys = (sysLocs || []).filter((l: any) => {
           if (!l.city) return false;
           const cityMatch = Array.from(areasInXml).some(xmlArea => xmlArea.includes(l.city) || l.city.includes(xmlArea));
           return isEarthquake ? cityMatch : (cityMatch || (l.jma_area_name && areasInXml.has(l.jma_area_name)));
         });
 
-        const matchedUsers = (userLocs || []).filter(l => {
+        const matchedUsers = (userLocs || []).filter((l: any) => {
           if (!l.city) return false;
           const cityMatch = Array.from(areasInXml).some(xmlArea => xmlArea.includes(l.city) || l.city.includes(xmlArea));
           return isEarthquake ? cityMatch : (cityMatch || (l.jma_area_name && areasInXml.has(l.jma_area_name)));
@@ -360,8 +360,8 @@ async function createIncidentAndNotify(
         const contentText = (entry.raw as any)?.content?.['#text'] || (entry.raw as any)?.headline?.['#text'] || "";
 
         if (matchedSys.length > 0) {
-          const targetSummary = matchedSys.map(l => `${l.label}(${l.city})`).join("、");
-          const alerts = !isEarthquake ? matchedSys.map(l => {
+          const targetSummary = matchedSys.map((l: any) => `${l.label}(${l.city})`).join("、");
+          const alerts = !isEarthquake ? matchedSys.map((l: any) => {
             const k = getKinds(l);
             return `*${l.label}(${l.city})にて${k.length > 0 ? `【${k.join("、")}】` : entry.title}が発表されています。*`;
           }) : [];
@@ -372,14 +372,14 @@ async function createIncidentAndNotify(
         }
 
         const userGroups = new Map<string, any[]>();
-        matchedUsers.forEach(l => {
+        matchedUsers.forEach((l: any) => {
           if (!userGroups.has(l.user_id)) userGroups.set(l.user_id, []);
           userGroups.get(l.user_id)?.push(l);
         });
 
         for (const [uid, locs] of Array.from(userGroups.entries())) {
-          const targetSummary = locs.map(l => `${l.display_name}(${l.city})`).join("、");
-          const alerts = !isEarthquake ? locs.map(l => {
+          const targetSummary = locs.map((l: any) => `${l.display_name}(${l.city})`).join("、");
+          const alerts = !isEarthquake ? locs.map((l: any) => {
             const k = getKinds(l);
             return `*${l.display_name}(${l.city})にて${k.length > 0 ? `【${k.join("、")}】` : entry.title}が発表されています。*`;
           }) : [];
