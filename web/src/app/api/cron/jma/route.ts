@@ -280,14 +280,12 @@ async function createIncidentAndNotify(
         }
         if (body.Tsunami) tsunamiText = "【津波情報】津波警報・注意報が発表されています。海岸付近から離れてください。";
 
-        // --- 詳細情報の抽出ロジック ---
         const areaDetails = new Map<string, Set<string>>();
         const extractDetails = (obj: any) => {
           if (!obj || typeof obj !== "object") return;
           if (Array.isArray(obj)) {
             obj.forEach(extractDetails);
           } else {
-            // AreaとKindがセットになっている場合 (Warningなど)
             if (obj.Area && obj.Kind) {
               const areas = asUnknownArray(obj.Area);
               const kinds = asUnknownArray(obj.Kind).map(k => isRecord(k) ? asString(k.Name) : null).filter(Boolean) as string[];
@@ -299,7 +297,6 @@ async function createIncidentAndNotify(
                 }
               });
             }
-            // MeteorologicalInfos などの Property 構造
             if (obj.Area && obj.Property) {
               const areas = asUnknownArray(obj.Area);
               const properties = asUnknownArray(obj.Property);
@@ -360,10 +357,13 @@ async function createIncidentAndNotify(
         const eqInfo = isEarthquake ? [`最大震度：震度${maxInt}`, `震源地：${epicenter}`, `（M${magnitude} / 深さ：${depth}）`] : [];
         const contentText = (entry.raw as any)?.content?.['#text'] || (entry.raw as any)?.headline?.['#text'] || "";
 
-        // --- 1. システム地点（全社共通）の通知：地点ごとに送信 ---
+        // --- 1. システム地点（全社共通）の通知 ---
         for (const l of matchedSys) {
           const k = getKinds(l);
-          const alerts = !isEarthquake ? [`*${l.label}(${l.city})にて${k.length > 0 ? `【${k.join("、")}】` : entry.title}が発表されています。*`] : [];
+          // 地震以外の場合、その地点に関係する警報名が1つもなければ通知しない
+          if (!isEarthquake && k.length === 0) continue;
+
+          const alerts = !isEarthquake ? [`*${l.label}(${l.city})にて【${k.join("、")}】が発表されています。*`] : [];
           const targetSummary = `${l.label}(${l.city})`;
           
           await sendNotification({
@@ -372,10 +372,13 @@ async function createIncidentAndNotify(
           });
         }
 
-        // --- 2. ユーザー個別地点の通知：ユーザーごと・地点ごとに送信 ---
+        // --- 2. ユーザー個別地点の通知 ---
         for (const l of matchedUsers) {
           const k = getKinds(l);
-          const alerts = !isEarthquake ? [`*${l.display_name}(${l.city})にて${k.length > 0 ? `【${k.join("、")}】` : entry.title}が発表されています。*`] : [];
+          // 地震以外の場合、その地点に関係する警報名が1つもなければ通知しない
+          if (!isEarthquake && k.length === 0) continue;
+
+          const alerts = !isEarthquake ? [`*${l.display_name}(${l.city})にて【${k.join("、")}】が発表されています。*`] : [];
           const targetSummary = `${l.display_name}(${l.city})`;
           
           const { data: prof } = await supabase.from("profiles").select("slack_user_id").eq("id", l.user_id).single();
