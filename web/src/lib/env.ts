@@ -29,6 +29,10 @@ export const env = {
   SUPABASE_SERVICE_ROLE_KEY: () => mustGetEnv("SUPABASE_SERVICE_ROLE_KEY"),
   CRON_SECRET: () => mustGetEnv("CRON_SECRET"),
   SLACK_WEBHOOK_URL: () => getEnv("SLACK_WEBHOOK_URL"),
+  /** 本番環境専用の通知先（未設定時は SLACK_WEBHOOK_URL を使用） */
+  SLACK_PRODUCTION_WEBHOOK_URL: () => getEnv("SLACK_PRODUCTION_WEBHOOK_URL"),
+  /** 本番環境のメンション（カンマ区切り: here, channel, または U01234 形式のユーザーID） */
+  SLACK_PRODUCTION_MENTIONS: () => getEnv("SLACK_PRODUCTION_MENTIONS"),
   SLACK_BOT_TOKEN: () => getEnv("SLACK_BOT_TOKEN"),
   SLACK_DM_USER_ID: () => getEnv("SLACK_DM_USER_ID"),
   SLACK_WORKFLOW_SHARED_SECRET: () => mustGetEnv("SLACK_WORKFLOW_SHARED_SECRET"),

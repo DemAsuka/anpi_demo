@@ -119,11 +119,24 @@ export async function sendNotification(params: {
   }
 
   const demoPrefix = params.forceDemoPrefix || env.DEMO_MODE() ? "[DEMO] " : "";
-  
-  // メンションの組み立て
-  const mentionText = params.mentions && params.mentions.length > 0 
-    ? params.mentions.join(" ") + "\n" 
-    : "";
+
+  // 本番時は環境変数 SLACK_PRODUCTION_MENTIONS を優先（here / channel / Uxxxx）
+  const rawMentions =
+    mode === "production" && env.SLACK_PRODUCTION_MENTIONS()
+      ? env
+          .SLACK_PRODUCTION_MENTIONS()!
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((s) => {
+            const lower = s.toLowerCase();
+            if (lower === "here") return "<!here>";
+            if (lower === "channel") return "<!channel>";
+            return `<@${s}>`; // ユーザーIDはそのまま（U01234 形式）
+          })
+      : params.mentions;
+
+  const mentionText = rawMentions && rawMentions.length > 0 ? rawMentions.join(" ") + "\n" : "";
 
   const text = `${modePrefix}${demoPrefix}\n${mentionText}${params.text}`;
 
@@ -135,7 +148,11 @@ export async function sendNotification(params: {
     return;
   }
 
-  const webhookUrl = env.SLACK_WEBHOOK_URL();
+  // 本番時は SLACK_PRODUCTION_WEBHOOK_URL を優先
+  const webhookUrl =
+    mode === "production" && env.SLACK_PRODUCTION_WEBHOOK_URL()
+      ? env.SLACK_PRODUCTION_WEBHOOK_URL()!
+      : env.SLACK_WEBHOOK_URL();
   if (webhookUrl) {
     console.log("Sending Slack Webhook to:", webhookUrl.substring(0, 20) + "...");
     await postToWebhook(webhookUrl, text);
@@ -143,7 +160,7 @@ export async function sendNotification(params: {
   }
 
   throw new Error(
-    "No Slack destination configured. Set SLACK_BOT_TOKEN+SLACK_DM_USER_ID or SLACK_WEBHOOK_URL.",
+    "No Slack destination configured. Set SLACK_BOT_TOKEN+SLACK_DM_USER_ID or SLACK_WEBHOOK_URL (or SLACK_PRODUCTION_WEBHOOK_URL for production).",
   );
 }
 
