@@ -123,11 +123,23 @@ export async function GET(request: NextRequest) {
   }
 
   const fetched: AtomEntry[] = [];
-  for (const feed of FEEDS) {
-    const res = await fetch(feed, { cache: "no-store" });
-    if (!res.ok) continue;
-    const xml = await res.text();
-    fetched.push(...parseAtom(xml, feed));
+  const feedResults = await Promise.allSettled(
+    FEEDS.map(async (feed) => {
+      const res = await fetch(feed, { cache: "no-store" });
+      if (!res.ok) {
+        throw new Error(`Feed ${feed} returned ${res.status}`);
+      }
+      const xml = await res.text();
+      return parseAtom(xml, feed);
+    })
+  );
+
+  for (const result of feedResults) {
+    if (result.status === "fulfilled") {
+      fetched.push(...result.value);
+    } else {
+      console.error("Feed fetch failed:", result.reason);
+    }
   }
 
   if (!fetched.length) {
@@ -238,28 +250,56 @@ async function createIncidentAndNotify(
   mode: "production" | "test"
 ) {
   const rawAtom = entry.raw as any;
-  const eventId = rawAtom?.eventID;
+  let eventId = rawAtom?.eventID;
   const infoType = rawAtom?.infoType;
 
+  // まずフィードの eventID で重複チェック
   if (eventId) {
     const { data: past } = await supabase.from("incidents").select("info_type").eq("event_id", eventId).eq("mode", mode);
     if (past?.some((i: any) => i.info_type === infoType)) return;
     if (rule.menu_type === "earthquake" && past?.some((i: any) => i.info_type === "VXSE53")) return;
   } else {
+    // フィードに eventID がない場合、entry_key でチェック（詳細XML取得前に暫定チェック）
     const { data: existing } = await supabase.from("incidents").select("id").eq("jma_entry_key", entry.entryKey).eq("mode", mode).single();
     if (existing) return;
   }
 
+  let maxInt = "確認中", epicenter = "確認中", depth = "確認中", magnitude = "確認中", tsunamiText = "";
+  let actualAreasInXml: string[] = [];
+  let xmlEventId: string | null = null;
+  let originTime: string | null = null;
+
+  // 地震の場合、詳細XMLを先に取得して EventID で重複チェック（フィードに eventID がない場合の補完）
+  if (rule.menu_type === "earthquake" && entry.link && !eventId) {
+    try {
+      const res = await fetch(entry.link);
+      const xml = await res.text();
+      const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
+      const doc = parser.parse(xml);
+      const head = doc?.Report?.Head;
+      if (head?.EventID) {
+        xmlEventId = String(head.EventID).trim() || null;
+        if (xmlEventId) {
+          const { data: pastByXmlEventId } = await supabase.from("incidents").select("info_type").eq("event_id", xmlEventId).eq("mode", mode);
+          if (pastByXmlEventId?.some((i: any) => i.info_type === infoType)) return;
+          if (pastByXmlEventId?.some((i: any) => i.info_type === "VXSE53")) return;
+          eventId = xmlEventId;
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch XML for duplicate check:", e);
+    }
+  }
+
+  // 詳細XML取得後に eventId が確定した場合はそれを使用
+  const finalEventId = eventId || xmlEventId || null;
   const { data: incident, error: incError } = await supabase.from("incidents").insert({
     status: "active", menu_type: rule.menu_type, jma_entry_key: entry.entryKey,
     title: entry.title, is_drill: mode === "test", mode: mode,
-    slack_channel: rule.slack_channel ?? "dm", event_id: eventId || null, info_type: infoType || null,
+    slack_channel: rule.slack_channel ?? "dm", event_id: finalEventId, info_type: infoType || null,
   }).select().single();
 
   if (incError || !incident) return;
-
-  let maxInt = "確認中", epicenter = "確認中", depth = "確認中", magnitude = "確認中", tsunamiText = "";
-  let actualAreasInXml: string[] = [];
 
   try {
     if (entry.link) {
@@ -267,18 +307,77 @@ async function createIncidentAndNotify(
       const xml = await res.text();
       const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
       const doc = parser.parse(xml);
+      const head = doc?.Report?.Head;
       const body = doc?.Report?.Body;
 
+      // 詳細XMLから EventID を取得（まだ取得していない場合）
+      if (!xmlEventId && head?.EventID) xmlEventId = String(head.EventID).trim() || null;
+
       if (body) {
+
         if (body.Intensity) maxInt = body.Intensity.Observation?.MaxInt || maxInt;
         if (body.Earthquake) {
           const eq = body.Earthquake;
           epicenter = eq.Hypocenter?.Area?.Name || epicenter;
-          magnitude = eq.Magnitude || magnitude;
+          // 発生時刻（OriginTime）を取得
+          if (eq.OriginTime) originTime = String(eq.OriginTime).trim() || null;
+          // 気象庁XMLではマグニチュードは jmx_eb:Magnitude で提供される
+          const magNode = eq['jmx_eb:Magnitude'] ?? eq.Magnitude;
+          if (magNode != null) {
+            const magVal = typeof magNode === "object" && magNode !== null && "#text" in magNode
+              ? (magNode as { "#text"?: string })["#text"]
+              : String(magNode);
+            if (magVal) magnitude = magVal;
+          }
+          // 深さは jmx_eb:Depth または jmx_eb:Coordinate の description（例: "深さ10km" "ごく浅い"）
           const dNode = eq.Hypocenter?.Area?.['jmx_eb:Depth'];
-          if (dNode) depth = (dNode['#text'] || dNode).toString().replace('km','') + 'km';
+          if (dNode != null) {
+            const rawD = typeof dNode === "object" && dNode !== null && "#text" in dNode
+              ? (dNode as { "#text"?: string })["#text"]
+              : undefined;
+            const dVal = (rawD !== undefined && rawD !== null ? rawD : String(dNode)).trim();
+            if (dVal) depth = dVal.includes("km") ? dVal : `${dVal}km`;
+          } else {
+            const coord = eq.Hypocenter?.Area?.['jmx_eb:Coordinate'];
+            const desc = typeof coord === "object" && coord !== null && coord["@_description"]
+              ? String(coord["@_description"]) : "";
+            if (desc) {
+              const depthMatch = desc.match(/深さ\s*(\d+)\s*km/i) || desc.match(/深さ\s*(\d+)/i);
+              if (depthMatch) depth = depthMatch[1] + "km";
+              else if (/ごく浅い|浅い|不明/i.test(desc)) depth = desc;
+            }
+          }
+        }
+        // 地震時: 詳細XMLにM/深さがない場合、フィード本文から抽出を試行
+        if (rule.menu_type === "earthquake") {
+          const rawText = String((entry.raw as any)?.content?.["#text"] ?? (entry.raw as any)?.title ?? "").trim();
+          if (magnitude === "確認中" && rawText) {
+            const mMatch = rawText.match(/M\s*(\d+\.?\d*)/i) || rawText.match(/マグニチュード\s*(\d+\.?\d*)/i);
+            if (mMatch) magnitude = mMatch[1];
+          }
+          if (depth === "確認中" && rawText) {
+            const dMatch = rawText.match(/深さ\s*(\d+)\s*km/i) || rawText.match(/深さ\s*(\d+)/i) || rawText.match(/(\d+)\s*km/i);
+            if (dMatch) depth = dMatch[1] + "km";
+          }
         }
         if (body.Tsunami) tsunamiText = "【津波情報】津波警報・注意報が発表されています。海岸付近から離れてください。";
+
+        // 地震時: 地域別震度（Intensity.Observation.Pref[].Area[]）を収集
+        const intensityByArea = new Map<string, string>();
+        if (body.Intensity?.Observation) {
+          const obs = body.Intensity.Observation as Record<string, unknown>;
+          const prefs = asUnknownArray(obs.Pref ?? []);
+          for (const p of prefs) {
+            if (!isRecord(p)) continue;
+            const areas = asUnknownArray(p.Area ?? []);
+            for (const a of areas) {
+              if (!isRecord(a)) continue;
+              const name = asString(a.Name);
+              const maxIntVal = asString(a.MaxInt) ?? asString((a as any)["jmx_eb:MaxInt"]);
+              if (name && maxIntVal) intensityByArea.set(name, maxIntVal);
+            }
+          }
+        }
 
         const areaDetails = new Map<string, Set<string>>();
         const extractDetails = (obj: any) => {
@@ -332,6 +431,17 @@ async function createIncidentAndNotify(
         ]);
 
         const isEarthquake = rule.menu_type === "earthquake";
+        const getTargetShindo = (targetSummary: string, city?: string | null): string => {
+          if (!isEarthquake || intensityByArea.size === 0) return maxInt;
+          const searchTerms = city ? [city, targetSummary] : [targetSummary];
+          for (const term of searchTerms) {
+            if (!term) continue;
+            for (const [areaName, intVal] of intensityByArea) {
+              if (areaName.includes(term) || (term.length >= 2 && term.includes(areaName))) return intVal;
+            }
+          }
+          return "対象外";
+        };
         const getKinds = (l: any) => {
           const kinds = new Set<string>();
           areaDetails.forEach((v, k) => {
@@ -353,7 +463,10 @@ async function createIncidentAndNotify(
         });
 
         const prefix = mode === "test" ? `【訓練：${rule.menu_type.toUpperCase()}】` : "";
-        const eventTime = entry.updated ? new Date(entry.updated).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) : "不明";
+        // 地震の場合は発生時刻（OriginTime）、それ以外は発表時刻（entry.updated）
+        const eventTime = isEarthquake && originTime
+          ? new Date(originTime).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
+          : (entry.updated ? new Date(entry.updated).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) : "不明");
         const eqInfo = isEarthquake ? [`最大震度：震度${maxInt}`, `震源地：${epicenter}`, `（M${magnitude} / 深さ：${depth}）`] : [];
         const contentText = (entry.raw as any)?.content?.['#text'] || (entry.raw as any)?.headline?.['#text'] || "";
 
@@ -365,10 +478,10 @@ async function createIncidentAndNotify(
 
           const alerts = !isEarthquake ? [`*${l.label}(${l.city})にて【${k.join("、")}】が発表されています。*`] : [];
           const targetSummary = `${l.label}(${l.city})`;
-          
+          const targetShindo = isEarthquake ? getTargetShindo(targetSummary, l.city) : undefined;
           await sendNotification({
             mode, mentions: ["<!here>"],
-            text: buildMessage(prefix, alerts, eqInfo, rule.template, entry.title, contentText, maxInt, targetSummary, tsunamiText, eventTime, mode)
+            text: buildMessage(prefix, alerts, eqInfo, rule.template, entry.title, contentText, maxInt, targetSummary, tsunamiText, eventTime, mode, k.join("、"), targetShindo)
           });
         }
 
@@ -380,21 +493,22 @@ async function createIncidentAndNotify(
 
           const alerts = !isEarthquake ? [`*${l.display_name}(${l.city})にて【${k.join("、")}】が発表されています。*`] : [];
           const targetSummary = `${l.display_name}(${l.city})`;
-          
+          const targetShindo = isEarthquake ? getTargetShindo(targetSummary, l.city) : undefined;
           const { data: prof } = await supabase.from("profiles").select("slack_user_id").eq("id", l.user_id).single();
-          
           await sendNotification({
             mode, mentions: prof?.slack_user_id ? [`<@${prof.slack_user_id}>`] : undefined,
-            text: buildMessage(prefix, alerts, eqInfo, rule.template, entry.title, contentText, maxInt, targetSummary, tsunamiText, eventTime, mode)
+            text: buildMessage(prefix, alerts, eqInfo, rule.template, entry.title, contentText, maxInt, targetSummary, tsunamiText, eventTime, mode, k.join("、"), targetShindo)
           });
         }
 
         // --- 3. テストモードでマッチしなかった場合の全体通知 ---
         if (mode === "test" && matchedSys.length === 0 && matchedUsers.length === 0) {
           const targetSummary = actualAreasInXml.length > 0 ? actualAreasInXml.slice(0, 5).join("、") + (actualAreasInXml.length > 5 ? `ほか${actualAreasInXml.length - 5}地点` : "") : "デモ用全国通知（試験環境）";
+          const targetShindo = isEarthquake ? getTargetShindo(targetSummary) : undefined;
           const alerts = !isEarthquake ? [`*${targetSummary}にて${entry.title}が発表されています。*`] : [];
+          const allKinds = Array.from(new Set(Array.from(areaDetails.values()).flatMap((s) => Array.from(s)))).join("、");
           await sendNotification({
-            mode, text: buildMessage(prefix, alerts, eqInfo, rule.template, entry.title, contentText, maxInt, targetSummary, tsunamiText, eventTime, mode)
+            mode, text: buildMessage(prefix, alerts, eqInfo, rule.template, entry.title, contentText, maxInt, targetSummary, tsunamiText, eventTime, mode, allKinds, targetShindo)
           });
         }
       }
@@ -407,7 +521,34 @@ async function createIncidentAndNotify(
   });
 }
 
-function buildMessage(prefix: string, alerts: string[], eq: string[], temp: string|null, title: string|null, content: string, max: string, target: string, tsunami: string, time: string, mode: string) {
-  const formatted = (temp ?? "安否確認を開始します: {title}").replace(/\\n/g, "\n").replace("{title}", title ?? "").replace("{content}", content).replace("{max_shindo}", `震度${max}`).replace("{target_summary}", target).replace(/対象目安[：:]\s*/g, "通知対象エリア：");
+function buildMessage(prefix: string, alerts: string[], eq: string[], temp: string|null, title: string|null, content: string, max: string, target: string, tsunami: string, time: string, mode: string, warningName?: string, targetShindo?: string) {
+  const warningValue = warningName ?? "";
+  let formatted = (temp ?? "安否確認を開始します: {title}")
+    .replace(/\\n/g, "\n")
+    .replace("{title}", title ?? "")
+    .replace("{content}", content)
+    .replace(/\{max_shindo\}/g, max ? `震度${max}` : "")
+    .replace("{target_summary}", target)
+    // warning_name: 半角・全角括弧・空白・表記ゆれに対応（先に確実に置換）
+    .replace(/\{\s*warning[_\.\-]?name\s*\}/gi, warningValue)
+    .replace(/\uFF5B\s*warning[_\.\-]?name\s*\uFF5D/gi, warningValue)
+    .replace(/\{warning_name\}/g, warningValue)
+    .replace(/\uFF5Bwarning_name\uFF5D/g, warningValue)
+    .replace(/対象目安[：:]\s*/g, "通知対象エリア：")
+    // 乾燥・強風・なだれ等も同じテンプレートで流れるため「豪雨」は誤解を招くので「気象警報」に統一
+    .replace(/【安否確認[（(]豪雨[）)]】/g, "【安否確認（気象警報）】")
+    // 「気象庁情報：… を検知しました。」の行を削除（プレースホルダ未置換・置換後どちらも削除）
+    .replace(/気象庁情報[：:]\s*[^\n]*?を検知しました。[^\S\n]*\n?/g, "")
+    .replace(/気象庁情報[：:][^\n]*?を検知しました。[^\S\n]*/g, "");
+  // 地震時は「通知対象エリアの震度」を本文に必ず含める（通知対象エリア：の直後で分かりやすく表示）
+  if (targetShindo != null && targetShindo !== "") {
+    const shindoDisplay = targetShindo === "対象外" ? "対象外" : (/^震度/.test(targetShindo) ? targetShindo : `震度${targetShindo}`);
+    const shindoLine = `通知対象エリアの震度：${shindoDisplay}`;
+    if (formatted.includes("通知対象エリア：")) {
+      formatted = formatted.replace(/(通知対象エリア：[^\n]+)/, `$1\n${shindoLine}`);
+    } else {
+      formatted = formatted + "\n" + shindoLine;
+    }
+  }
   return [prefix, alerts.length > 0 ? alerts.join("\n") : `*対象の登録地点：${target}*`, ...eq, "", formatted, tsunami ? `\n${tsunami}` : "", "", `発表時刻: ${time}`, "", mode === "test" ? "※これはJMA連携試験による自動配信です。内容を確認し、問題なければ回答してください。" : "上記の内容を確認し、速やかに回答してください。"].filter(Boolean).join("\n");
 }

@@ -20,11 +20,43 @@ async function slackApi<T extends SlackApiResult>(
   return (await res.json()) as T;
 }
 
+function buildMessageBlocks(text: string) {
+  return [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: text,
+      },
+    },
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "✅ 無事です", emoji: true },
+          style: "primary",
+          value: "safe",
+          action_id: "report_safe",
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "⚠️ 助けが必要", emoji: true },
+          style: "danger",
+          value: "help",
+          action_id: "report_help",
+        },
+      ],
+    },
+  ];
+}
+
 async function postToWebhook(webhookUrl: string, text: string) {
+  const blocks = buildMessageBlocks(text);
   await fetch(webhookUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, blocks }),
   });
 }
 
@@ -44,44 +76,7 @@ async function postToDm(
     throw new Error(`Slack conversations.open failed: ${open.error ?? "unknown"}`);
   }
 
-  // Use Block Kit for interactive buttons
-  const blocks = [
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: text,
-      },
-    },
-    {
-      type: "actions",
-      elements: [
-        {
-          type: "button",
-          text: {
-            type: "plain_text",
-            text: "✅ 無事です",
-            emoji: true,
-          },
-          style: "primary",
-          value: "safe",
-          action_id: "report_safe",
-        },
-        {
-          type: "button",
-          text: {
-            type: "plain_text",
-            text: "⚠️ 助けが必要",
-            emoji: true,
-          },
-          style: "danger",
-          value: "help",
-          action_id: "report_help",
-        },
-      ],
-    },
-  ];
-
+  const blocks = buildMessageBlocks(text);
   const post = await slackApi<{ ok: boolean; error?: string }>(token, "chat.postMessage", {
     channel: open.channel.id,
     text, // Fallback text

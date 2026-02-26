@@ -195,6 +195,7 @@ export function ActivationMenuEditor({ menus: initialMenus, viewMode }: Props) {
                   <div className="flex justify-between items-center pt-1">
                     <p className="text-[9px] text-gray-400 font-medium">
                       利用可能: {"{title}, {content}, {target_summary}, {max_shindo}"}
+                      {menu.menu_type === "heavy_rain" && " / 気象用: {warning_name}"}
                     </p>
                     <button
                       onClick={() => handleUpdateTemplate(menu.id, (document.getElementById(`template-${menu.id}`) as HTMLTextAreaElement).value)}
