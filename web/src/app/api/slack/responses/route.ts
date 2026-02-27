@@ -51,16 +51,33 @@ export async function POST(request: NextRequest) {
       if (status && slack_user_id) {
         const supabase = createSupabaseServiceRoleClient();
         
-        // Find the latest active incident to link this response
-        const { data: latestIncident } = await supabase
-          .from("incidents")
-          .select("id")
-          .eq("status", "active")
-          .order("started_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        // Find the incident associated with this specific Slack message
+        const threadTs = payload.container?.message_ts || payload.message?.ts;
+        let incident_id: string | null = null;
+        
+        if (threadTs) {
+          const { data: matchedIncident } = await supabase
+            .from("incidents")
+            .select("id")
+            .eq("slack_thread_ts", threadTs)
+            .limit(1)
+            .maybeSingle();
+            
+          incident_id = matchedIncident?.id ?? null;
+        }
 
-        const incident_id = latestIncident?.id ?? null;
+        // Fallback: If not found by thread_ts, use the latest active incident
+        if (!incident_id) {
+          const { data: latestIncident } = await supabase
+            .from("incidents")
+            .select("id")
+            .eq("status", "active")
+            .order("started_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          incident_id = latestIncident?.id ?? null;
+        }
 
         // Use upsert to overwrite existing response, or fallback to insert
         try {

@@ -479,10 +479,13 @@ async function createIncidentAndNotify(
           const alerts = !isEarthquake ? [`*${l.label}(${l.city})にて【${k.join("、")}】が発表されています。*`] : [];
           const targetSummary = `${l.label}(${l.city})`;
           const targetShindo = isEarthquake ? getTargetShindo(targetSummary, l.city) : undefined;
-          await sendNotification({
+          const threadTs = await sendNotification({
             mode, mentions: ["<!here>"],
             text: buildMessage(prefix, alerts, eqInfo, rule.template, entry.title, contentText, maxInt, targetSummary, tsunamiText, eventTime, mode, k.join("、"), targetShindo)
           });
+          if (threadTs) {
+            await supabase.from("incidents").update({ slack_thread_ts: threadTs }).eq("id", incident.id);
+          }
         }
 
         // --- 2. ユーザー個別地点の通知 ---
@@ -495,10 +498,13 @@ async function createIncidentAndNotify(
           const targetSummary = `${l.display_name}(${l.city})`;
           const targetShindo = isEarthquake ? getTargetShindo(targetSummary, l.city) : undefined;
           const { data: prof } = await supabase.from("profiles").select("slack_user_id").eq("id", l.user_id).single();
-          await sendNotification({
+          const threadTs = await sendNotification({
             mode, mentions: prof?.slack_user_id ? [`<@${prof.slack_user_id}>`] : undefined,
             text: buildMessage(prefix, alerts, eqInfo, rule.template, entry.title, contentText, maxInt, targetSummary, tsunamiText, eventTime, mode, k.join("、"), targetShindo)
           });
+          if (threadTs) {
+            await supabase.from("incidents").update({ slack_thread_ts: threadTs }).eq("id", incident.id);
+          }
         }
 
         // --- 3. テストモードでマッチしなかった場合の全体通知 ---
@@ -507,9 +513,12 @@ async function createIncidentAndNotify(
           const targetShindo = isEarthquake ? getTargetShindo(targetSummary) : undefined;
           const alerts = !isEarthquake ? [`*${targetSummary}にて${entry.title}が発表されています。*`] : [];
           const allKinds = Array.from(new Set(Array.from(areaDetails.values()).flatMap((s) => Array.from(s)))).join("、");
-          await sendNotification({
+          const threadTs = await sendNotification({
             mode, text: buildMessage(prefix, alerts, eqInfo, rule.template, entry.title, contentText, maxInt, targetSummary, tsunamiText, eventTime, mode, allKinds, targetShindo)
           });
+          if (threadTs) {
+            await supabase.from("incidents").update({ slack_thread_ts: threadTs }).eq("id", incident.id);
+          }
         }
       }
     }

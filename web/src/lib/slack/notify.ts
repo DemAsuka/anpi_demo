@@ -51,13 +51,15 @@ function buildMessageBlocks(text: string) {
   ];
 }
 
-async function postToWebhook(webhookUrl: string, text: string) {
+async function postToWebhook(webhookUrl: string, text: string): Promise<string | undefined> {
   const blocks = buildMessageBlocks(text);
-  await fetch(webhookUrl, {
+  const res = await fetch(webhookUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ text, blocks }),
   });
+  // Incoming Webhook doesn't return thread_ts
+  return undefined;
 }
 
 async function postToDm(
@@ -65,7 +67,7 @@ async function postToDm(
   userId: string,
   text: string,
   isDrill?: boolean,
-) {
+): Promise<string | undefined> {
   // Open (or fetch) a DM channel id with the user
   const open = await slackApi<{ ok: boolean; channel?: { id: string }; error?: string }>(
     token,
@@ -77,7 +79,7 @@ async function postToDm(
   }
 
   const blocks = buildMessageBlocks(text);
-  const post = await slackApi<{ ok: boolean; error?: string }>(token, "chat.postMessage", {
+  const post = await slackApi<{ ok: boolean; error?: string; ts?: string }>(token, "chat.postMessage", {
     channel: open.channel.id,
     text, // Fallback text
     blocks,
@@ -85,6 +87,7 @@ async function postToDm(
   if (!post.ok) {
     throw new Error(`Slack chat.postMessage failed: ${post.error ?? "unknown"}`);
   }
+  return post.ts;
 }
 
 export type NotificationMode = "production" | "drill" | "test";
@@ -95,7 +98,7 @@ export async function sendNotification(params: {
   isDrill?: boolean;
   mode?: NotificationMode;
   mentions?: string[];
-}) {
+}): Promise<string | undefined> {
   console.log("Slack Notification Request:", { mode: params.mode, text: params.text, mentions: params.mentions });
   let modePrefix = "";
   const mode = params.mode || (params.isDrill ? "drill" : "production");
@@ -137,13 +140,30 @@ export async function sendNotification(params: {
 
   const botToken = env.SLACK_BOT_TOKEN();
   const dmUserId = env.SLACK_DM_USER_ID();
-  if (botToken && dmUserId) {
+  const productionChannelId = env.SLACK_PRODUCTION_CHANNEL_ID();
+
+  // DM 用（デモなど）
+  if (botToken && dmUserId && !(mode === "production" && productionChannelId)) {
     console.log("Sending Slack DM to:", dmUserId);
-    await postToDm(botToken, dmUserId, text, params.isDrill);
-    return;
+    return await postToDm(botToken, dmUserId, text, params.isDrill);
   }
 
-  // 本番時は SLACK_PRODUCTION_WEBHOOK_URL を優先
+  // 本番: Bot でチャンネル投稿（ボタンが同じアプリに届くためクリックで反応する）
+  if (mode === "production" && botToken && productionChannelId) {
+    console.log("Sending Slack to channel:", productionChannelId);
+    const blocks = buildMessageBlocks(text);
+    const post = await slackApi<{ ok: boolean; error?: string; ts?: string }>(botToken, "chat.postMessage", {
+      channel: productionChannelId,
+      text,
+      blocks,
+    });
+    if (!post.ok) {
+      throw new Error(`Slack chat.postMessage failed: ${post.error ?? "unknown"}`);
+    }
+    return post.ts;
+  }
+
+  // Webhook フォールバック（ボタンは表示されるが、別アプリの Webhook だとクリックが届かない場合あり）
   const webhookUrl =
     mode === "production" && env.SLACK_PRODUCTION_WEBHOOK_URL()
       ? env.SLACK_PRODUCTION_WEBHOOK_URL()!
@@ -151,11 +171,11 @@ export async function sendNotification(params: {
   if (webhookUrl) {
     console.log("Sending Slack Webhook to:", webhookUrl.substring(0, 20) + "...");
     await postToWebhook(webhookUrl, text);
-    return;
+    return undefined;
   }
 
   throw new Error(
-    "No Slack destination configured. Set SLACK_BOT_TOKEN+SLACK_DM_USER_ID or SLACK_WEBHOOK_URL (or SLACK_PRODUCTION_WEBHOOK_URL for production).",
+    "No Slack destination configured. For production with buttons: set SLACK_BOT_TOKEN and SLACK_PRODUCTION_CHANNEL_ID. Or use SLACK_WEBHOOK_URL / SLACK_PRODUCTION_WEBHOOK_URL.",
   );
 }
 

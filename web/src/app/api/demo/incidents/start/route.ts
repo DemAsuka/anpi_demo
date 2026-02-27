@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     metadata: { menu_type: data.menu_type, title: data.title },
   });
 
-  await sendNotification({
+  const threadTs = await sendNotification({
     forceDemoPrefix: true,
     text: [
       "安否確認を開始します（訓練です）。",
@@ -73,6 +73,10 @@ export async function POST(request: NextRequest) {
       .filter(Boolean)
       .join("\n"),
   });
+
+  if (threadTs) {
+    await supabase.from("incidents").update({ slack_thread_ts: threadTs }).eq("id", data.id);
+  }
 
   return NextResponse.json({ ok: true, incident: data });
 }

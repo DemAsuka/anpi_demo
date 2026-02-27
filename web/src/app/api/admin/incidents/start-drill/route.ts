@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
 
   // 4. Send Slack notification
   try {
-    await sendNotification({
+    const threadTs = await sendNotification({
       mode: "drill",
       text: [
         `安否確認訓練を開始します。`,
@@ -84,6 +84,10 @@ export async function POST(request: NextRequest) {
         "下記のボタンから回答してください。",
       ].filter(Boolean).join("\n"),
     });
+
+    if (threadTs) {
+      await supabase.from("incidents").update({ slack_thread_ts: threadTs }).eq("id", incident.id);
+    }
   } catch (slackError) {
     console.error("Failed to send slack notification:", slackError);
     // Continue even if slack fails, but maybe log it.

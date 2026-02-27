@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
       }
 
       // マッチした場合のみ通知
-      await sendNotification({
+      const threadTs = await sendNotification({
         mode: "test",
         mentions: mentionList.length > 0 ? mentionList : undefined,
         text: [
@@ -109,7 +109,8 @@ export async function GET(request: NextRequest) {
           `発表時刻: ${new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}`,
         ].join("\n"),
       });
-      results.push({ city, status: "notification_sent", matched: matchedLocations, mentions: mentionList });
+      // NOTE: このデモ用APIでは incidents に登録していないため update slack_thread_ts は行いません
+      results.push({ city, status: "notification_sent", matched: matchedLocations, mentions: mentionList, threadTs });
     } else {
       results.push({ city, status: "skipped_no_match" });
     }
