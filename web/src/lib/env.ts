@@ -31,6 +31,8 @@ export const env = {
   SLACK_WEBHOOK_URL: () => getEnv("SLACK_WEBHOOK_URL"),
   /** 本番環境専用の通知先（未設定時は SLACK_WEBHOOK_URL を使用） */
   SLACK_PRODUCTION_WEBHOOK_URL: () => getEnv("SLACK_PRODUCTION_WEBHOOK_URL"),
+  /** 本番チャンネルID（C01234形式）。SLACK_BOT_TOKEN と両方設定すると Bot で投稿し、安否ボタンが動作する */
+  SLACK_PRODUCTION_CHANNEL_ID: () => getEnv("SLACK_PRODUCTION_CHANNEL_ID"),
   /** 本番環境のメンション（カンマ区切り: here, channel, または U01234 形式のユーザーID） */
   SLACK_PRODUCTION_MENTIONS: () => getEnv("SLACK_PRODUCTION_MENTIONS"),
   SLACK_BOT_TOKEN: () => getEnv("SLACK_BOT_TOKEN"),
