@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
       const payload = JSON.parse(payloadJson);
       const action = payload.actions?.[0];
       const slack_user_id = payload.user?.id;
+      const slack_user_name = payload.user?.username || payload.user?.name || "ユーザー";
       const status = action?.value; // "safe" or "help"
 
       if (status && slack_user_id) {
@@ -144,7 +145,7 @@ export async function POST(request: NextRequest) {
               body: JSON.stringify({
                 channel: channelId,
                 thread_ts: threadTs,
-                text: `📢 *安否回答の更新*\n<@${slack_user_id}> さんが「${statusLabel}」と回答しました。\n\n*📊 現在の集計*\n✅ 無事: ${safeCount}名 / ⚠️ 救助必要: ${helpCount}名`,
+                text: `📢 *安否回答の更新*\n${slack_user_name} さんが「${statusLabel}」と回答しました。\n\n*📊 現在の集計*\n✅ 無事: ${safeCount}名 / ⚠️ 救助必要: ${helpCount}名`,
               }),
             });
             const json = await res.json().catch(() => ({}));
