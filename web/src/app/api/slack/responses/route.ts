@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
         // 2. Slack スレッドに「誰がどのボタンを押したか」と集計を返信
         const botToken = env.SLACK_BOT_TOKEN();
         const channelId = payload.channel?.id;
-        const threadTs = payload.container?.message_ts || payload.message?.ts;
+        // threadTs is already defined above
 
         if (botToken && channelId && threadTs) {
           try {
