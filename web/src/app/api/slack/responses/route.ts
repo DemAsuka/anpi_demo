@@ -108,14 +108,17 @@ export async function POST(request: NextRequest) {
         const safeCount = Array.from(latestStatusByUser.values()).filter((s) => s === "safe").length;
         const helpCount = Array.from(latestStatusByUser.values()).filter((s) => s === "help").length;
 
-        // 2. Slack スレッドに集計状況を返信する
+        // 誰がどちらのボタンを押したか分かる表示用ラベル
+        const statusLabel = status === "safe" ? "無事です" : status === "help" ? "助けが必要" : (action.text?.text ?? status);
+
+        // 2. Slack スレッドに「誰がどのボタンを押したか」と集計を返信
         const botToken = env.SLACK_BOT_TOKEN();
         const channelId = payload.channel?.id;
         const threadTs = payload.container?.message_ts || payload.message?.ts;
 
         if (botToken && channelId && threadTs) {
           try {
-            await fetch("https://slack.com/api/chat.postMessage", {
+            const res = await fetch("https://slack.com/api/chat.postMessage", {
               method: "POST",
               headers: {
                 authorization: `Bearer ${botToken}`,
@@ -124,11 +127,13 @@ export async function POST(request: NextRequest) {
               body: JSON.stringify({
                 channel: channelId,
                 thread_ts: threadTs,
-                text: `📢 *安否回答の更新*\n<@${slack_user_id}> さんが 「${
-                  action.text?.text ?? status
-                }」 と回答しました。\n\n*📊 現在の集計*\n✅ 無事: ${safeCount}名 / ⚠️ 救助必要: ${helpCount}名`,
+                text: `📢 *安否回答の更新*\n<@${slack_user_id}> さんが「${statusLabel}」と回答しました。\n\n*📊 現在の集計*\n✅ 無事: ${safeCount}名 / ⚠️ 救助必要: ${helpCount}名`,
               }),
             });
+            const json = await res.json().catch(() => ({}));
+            if (!(json as { ok?: boolean }).ok) {
+              console.error("Slack chat.postMessage thread reply:", (json as { error?: string }).error ?? json);
+            }
           } catch (e) {
             console.error("Slack postMessage error:", e);
           }

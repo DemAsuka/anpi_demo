@@ -14,7 +14,7 @@ export async function AdminDashboardView({ currentMode }: { currentMode: string 
     query = query.in("mode", ["drill", "test"]);
   }
 
-  const { data: incidents } = await query.limit(20);
+  const { data: incidents } = await query.limit(50);
 
   const incidentIds = (incidents ?? []).map((i) => i.id);
   const { data: responses } = incidentIds.length
@@ -69,6 +69,11 @@ export async function AdminDashboardView({ currentMode }: { currentMode: string 
           <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">
             管理者ダッシュボード
           </h1>
+          {currentMode !== "prod" && (
+            <p className="text-sm text-gray-500">
+              本番で発動したインシデント（例: 気象警報・地震）は上段の「本番運用モード」に切り替えると表示されます。
+            </p>
+          )}
         </div>
       </div>
 
