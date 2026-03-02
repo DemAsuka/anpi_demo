@@ -6,6 +6,7 @@ export async function AdminDashboardView({ currentMode }: { currentMode: string 
   let query = supabase
     .from("incidents")
     .select("id,status,menu_type,title,started_at,ended_at,slack_channel,is_drill,mode")
+    .not("slack_thread_ts", "is", null)
     .order("started_at", { ascending: false });
 
   if (currentMode === "prod") {
