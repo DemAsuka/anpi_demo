@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { env } from "@/lib/env";
 import { createSupabaseServiceRoleClient } from "@/lib/supabase/service";
 
@@ -51,130 +52,133 @@ export async function POST(request: NextRequest) {
       const botToken = env.SLACK_BOT_TOKEN();
 
       if (status && slack_user_id) {
-        // Fetch real display name from Slack API
-        if (botToken) {
-          try {
-            const userRes = await fetch(`https://slack.com/api/users.info?user=${slack_user_id}`, {
-              headers: {
-                authorization: `Bearer ${botToken}`,
-              },
-            });
-            const userJson = await userRes.json().catch(() => ({}));
-            if (userJson.ok && userJson.user?.profile) {
-              slack_user_name = userJson.user.profile.display_name || userJson.user.real_name || slack_user_name;
+        // バックグラウンドで処理を実行
+        waitUntil((async () => {
+          // Fetch real display name from Slack API
+          if (botToken) {
+            try {
+              const userRes = await fetch(`https://slack.com/api/users.info?user=${slack_user_id}`, {
+                headers: {
+                  authorization: `Bearer ${botToken}`,
+                },
+              });
+              const userJson = await userRes.json().catch(() => ({}));
+              if (userJson.ok && userJson.user?.profile) {
+                slack_user_name = userJson.user.profile.display_name || userJson.user.real_name || slack_user_name;
+              }
+            } catch (err) {
+              console.error("Failed to fetch user info from Slack:", err);
             }
-          } catch (err) {
-            console.error("Failed to fetch user info from Slack:", err);
           }
-        }
 
-        const supabase = createSupabaseServiceRoleClient();
-        
-        // Find the incident associated with this specific Slack message
-        const threadTs = payload.container?.message_ts || payload.message?.ts;
-        let incident_id: string | null = null;
-        
-        if (threadTs) {
-          const { data: matchedIncident } = await supabase
-            .from("incidents")
-            .select("id")
-            .eq("slack_thread_ts", threadTs)
-            .limit(1)
-            .maybeSingle();
-            
-          incident_id = matchedIncident?.id ?? null;
-        }
+          const supabase = createSupabaseServiceRoleClient();
+          
+          // Find the incident associated with this specific Slack message
+          const threadTs = payload.container?.message_ts || payload.message?.ts;
+          let incident_id: string | null = null;
+          
+          if (threadTs) {
+            const { data: matchedIncident } = await supabase
+              .from("incidents")
+              .select("id")
+              .eq("slack_thread_ts", threadTs)
+              .limit(1)
+              .maybeSingle();
+              
+            incident_id = matchedIncident?.id ?? null;
+          }
 
-        // Fallback: If not found by thread_ts, use the latest active incident
-        if (!incident_id) {
-          const { data: latestIncident } = await supabase
-            .from("incidents")
-            .select("id")
-            .eq("status", "active")
-            .order("started_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+          // Fallback: If not found by thread_ts, use the latest active incident
+          if (!incident_id) {
+            const { data: latestIncident } = await supabase
+              .from("incidents")
+              .select("id")
+              .eq("status", "active")
+              .order("started_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
 
-          incident_id = latestIncident?.id ?? null;
-        }
+            incident_id = latestIncident?.id ?? null;
+          }
 
-        // Use upsert to overwrite existing response, or fallback to insert
-        try {
-          const { error: upsertError } = await supabase.from("responses").upsert({
-            incident_id,
-            slack_user_id,
-            status,
-            comment: `Answered via Slack Button: ${action.text?.text ?? status}`,
-            raw_payload: payload,
-            created_at: new Date().toISOString(),
-          }, {
-            onConflict: "incident_id,slack_user_id",
-          });
-
-          if (upsertError) {
-            // If upsert fails due to constraint issues with NULLs, just insert
-            await supabase.from("responses").insert({
+          // Use upsert to overwrite existing response, or fallback to insert
+          try {
+            const { error: upsertError } = await supabase.from("responses").upsert({
               incident_id,
               slack_user_id,
               status,
               comment: `Answered via Slack Button: ${action.text?.text ?? status}`,
               raw_payload: payload,
+              created_at: new Date().toISOString(),
+            }, {
+              onConflict: "incident_id,slack_user_id",
             });
-          }
-        } catch (err) {
-          console.error("Database operation failed:", err);
-        }
 
-        // 1. 最新の集計データを取得
-        // ユーザーごとに最新の1件のみをカウント対象にするため、作成日時順で取得
-        const { data: allResponses } = await supabase
-          .from("responses")
-          .select("slack_user_id, status")
-          .eq("incident_id", incident_id)
-          .order("created_at", { ascending: false });
-
-        // ユーザーIDをキーにして最新のステータスだけを保持
-        const latestStatusByUser = new Map<string, string>();
-        allResponses?.forEach((r) => {
-          if (r.slack_user_id && !latestStatusByUser.has(r.slack_user_id)) {
-            latestStatusByUser.set(r.slack_user_id, r.status);
-          }
-        });
-
-        const safeCount = Array.from(latestStatusByUser.values()).filter((s) => s === "safe").length;
-        const helpCount = Array.from(latestStatusByUser.values()).filter((s) => s === "help").length;
-
-        // 誰がどちらのボタンを押したか分かる表示用ラベル
-        const statusLabel = status === "safe" ? "無事です" : status === "help" ? "助けが必要" : (action.text?.text ?? status);
-
-        // 2. Slack スレッドに「誰がどのボタンを押したか」と集計を返信
-        const channelId = payload.channel?.id;
-        // threadTs is already defined above
-
-        if (botToken && channelId && threadTs) {
-          try {
-            const res = await fetch("https://slack.com/api/chat.postMessage", {
-              method: "POST",
-              headers: {
-                authorization: `Bearer ${botToken}`,
-                "content-type": "application/json",
-              },
-              body: JSON.stringify({
-                channel: channelId,
-                thread_ts: threadTs,
-                text: `📢 *安否回答の更新*\n${slack_user_name} さんが「${statusLabel}」と回答しました。\n\n*📊 現在の集計*\n✅ 無事: ${safeCount}名 / ⚠️ 救助必要: ${helpCount}名`,
-              }),
-            });
-            const json = await res.json().catch(() => ({}));
-            if (!(json as { ok?: boolean }).ok) {
-              console.error("Slack chat.postMessage thread reply:", (json as { error?: string }).error ?? json);
+            if (upsertError) {
+              // If upsert fails due to constraint issues with NULLs, just insert
+              await supabase.from("responses").insert({
+                incident_id,
+                slack_user_id,
+                status,
+                comment: `Answered via Slack Button: ${action.text?.text ?? status}`,
+                raw_payload: payload,
+              });
             }
-          } catch (e) {
-            console.error("Slack postMessage error:", e);
+          } catch (err) {
+            console.error("Database operation failed:", err);
           }
-        }
 
-        // Return a confirmation message
+          // 1. 最新の集計データを取得
+          // ユーザーごとに最新の1件のみをカウント対象にするため、作成日時順で取得
+          const { data: allResponses } = await supabase
+            .from("responses")
+            .select("slack_user_id, status")
+            .eq("incident_id", incident_id)
+            .order("created_at", { ascending: false });
+
+          // ユーザーIDをキーにして最新のステータスだけを保持
+          const latestStatusByUser = new Map<string, string>();
+          allResponses?.forEach((r) => {
+            if (r.slack_user_id && !latestStatusByUser.has(r.slack_user_id)) {
+              latestStatusByUser.set(r.slack_user_id, r.status);
+            }
+          });
+
+          const safeCount = Array.from(latestStatusByUser.values()).filter((s) => s === "safe").length;
+          const helpCount = Array.from(latestStatusByUser.values()).filter((s) => s === "help").length;
+
+          // 誰がどちらのボタンを押したか分かる表示用ラベル
+          const statusLabel = status === "safe" ? "無事です" : status === "help" ? "助けが必要" : (action.text?.text ?? status);
+
+          // 2. Slack スレッドに「誰がどのボタンを押したか」と集計を返信
+          const channelId = payload.channel?.id;
+          // threadTs is already defined above
+
+          if (botToken && channelId && threadTs) {
+            try {
+              const res = await fetch("https://slack.com/api/chat.postMessage", {
+                method: "POST",
+                headers: {
+                  authorization: `Bearer ${botToken}`,
+                  "content-type": "application/json",
+                },
+                body: JSON.stringify({
+                  channel: channelId,
+                  thread_ts: threadTs,
+                  text: `📢 *安否回答の更新*\n${slack_user_name} さんが「${statusLabel}」と回答しました。\n\n*📊 現在の集計*\n✅ 無事: ${safeCount}名 / ⚠️ 救助必要: ${helpCount}名`,
+                }),
+              });
+              const json = await res.json().catch(() => ({}));
+              if (!(json as { ok?: boolean }).ok) {
+                console.error("Slack chat.postMessage thread reply:", (json as { error?: string }).error ?? json);
+              }
+            } catch (e) {
+              console.error("Slack postMessage error:", e);
+            }
+          }
+        })());
+
+        // 即座にSlackへ200 OKを返し、タイムアウト(3秒ルール)によるエラー表示を防ぐ
         return new Response(`回答を受理しました`);
       }
     }
