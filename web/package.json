@@ -12,6 +12,7 @@
     "@clerk/nextjs": "^6.36.5",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.89.0",
+    "@vercel/functions": "^3.4.3",
     "fast-xml-parser": "^5.3.3",
     "next": "16.1.0",
     "react": "19.2.3",
