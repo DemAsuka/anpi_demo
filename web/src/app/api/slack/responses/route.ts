@@ -46,10 +46,28 @@ export async function POST(request: NextRequest) {
       const payload = JSON.parse(payloadJson);
       const action = payload.actions?.[0];
       const slack_user_id = payload.user?.id;
-      const slack_user_name = payload.user?.username || payload.user?.name || "ユーザー";
+      let slack_user_name = payload.user?.username || payload.user?.name || "ユーザー";
       const status = action?.value; // "safe" or "help"
+      const botToken = env.SLACK_BOT_TOKEN();
 
       if (status && slack_user_id) {
+        // Fetch real display name from Slack API
+        if (botToken) {
+          try {
+            const userRes = await fetch(`https://slack.com/api/users.info?user=${slack_user_id}`, {
+              headers: {
+                authorization: `Bearer ${botToken}`,
+              },
+            });
+            const userJson = await userRes.json().catch(() => ({}));
+            if (userJson.ok && userJson.user?.profile) {
+              slack_user_name = userJson.user.profile.display_name || userJson.user.real_name || slack_user_name;
+            }
+          } catch (err) {
+            console.error("Failed to fetch user info from Slack:", err);
+          }
+        }
+
         const supabase = createSupabaseServiceRoleClient();
         
         // Find the incident associated with this specific Slack message
@@ -130,7 +148,6 @@ export async function POST(request: NextRequest) {
         const statusLabel = status === "safe" ? "無事です" : status === "help" ? "助けが必要" : (action.text?.text ?? status);
 
         // 2. Slack スレッドに「誰がどのボタンを押したか」と集計を返信
-        const botToken = env.SLACK_BOT_TOKEN();
         const channelId = payload.channel?.id;
         // threadTs is already defined above
 
