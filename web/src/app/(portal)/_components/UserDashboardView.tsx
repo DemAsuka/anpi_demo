@@ -9,6 +9,7 @@ export async function UserDashboardView({ userId }: { userId: string }) {
     .from("incidents")
     .select("*")
     .eq("status", "active")
+    .not("slack_thread_ts", "is", null)
     .order("started_at", { ascending: false });
 
   return (
