@@ -227,17 +227,6 @@ export async function GET(request: NextRequest) {
 
         const isProdMatch = rule.enabled && ruleKeywords.length > 0 && ruleKeywords.some((k: string) => searchTarget.includes(k));
         if (isProdMatch) {
-          // 気象警報（heavy_rain）の場合、本文に「大雨」や「特別警報」が含まれていても、
-          // 実際の警報内容（Kind.Name）に大雨や特別警報が含まれていない場合は通知しない（乾燥注意報などでの誤検知を防ぐため）
-          if (rule.menu_type === "heavy_rain") {
-            const rawText = String((entry.raw as any)?.content?.["#text"] ?? (entry.raw as any)?.title ?? "").trim();
-            const hasHeavyRainKeyword = ruleKeywords.some((k: string) => rawText.includes(k));
-            if (!hasHeavyRainKeyword) {
-               // タイトルやヘッドラインだけでマッチした場合、詳細XMLの中身をチェックする必要があるが
-               // 簡易的に、本文（content）にキーワードが含まれていない場合はスキップする
-               // ※本来はXMLをパースしてKind.Nameを見るべきだが、ここでは簡易対応
-            }
-          }
           await createIncidentAndNotify(supabase, entry, rule, "production");
           continue;
         }
@@ -442,7 +431,6 @@ async function createIncidentAndNotify(
         ]);
 
         const isEarthquake = rule.menu_type === "earthquake";
-        const isHeavyRain = rule.menu_type === "heavy_rain";
         const getTargetShindo = (targetSummary: string, city?: string | null): string => {
           if (!isEarthquake || intensityByArea.size === 0) return maxInt;
           const searchTerms = city ? [city, targetSummary] : [targetSummary];
@@ -482,23 +470,11 @@ async function createIncidentAndNotify(
         const eqInfo = isEarthquake ? [`最大震度：震度${maxInt}`, `震源地：${epicenter}`, `（M${magnitude} / 深さ：${depth}）`] : [];
         const contentText = (entry.raw as any)?.content?.['#text'] || (entry.raw as any)?.headline?.['#text'] || "";
 
-        // 気象警報の場合、実際に発表されている警報内容（Kinds）の中に、設定されたキーワード（大雨、特別警報など）が含まれているかチェックする
-        const ruleKeywords = (rule.threshold as Record<string, any>)?.keywords ?? [];
-        const isTargetKind = (kinds: string[]) => {
-          if (!isHeavyRain) return true;
-          if (ruleKeywords.length === 0) return true;
-          // 警報の種類（例：乾燥注意報、大雨警報）の中に、キーワード（大雨、特別警報）が含まれているか
-          return kinds.some(k => ruleKeywords.some((keyword: string) => k.includes(keyword)));
-        };
-
         // --- 1. システム地点（全社共通）の通知 ---
         for (const l of matchedSys) {
           const k = getKinds(l);
           // 地震以外の場合、その地点に関係する警報名が1つもなければ通知しない
           if (!isEarthquake && k.length === 0) continue;
-          
-          // 気象警報の場合、対象の警報（大雨など）が含まれていない場合は通知をスキップ
-          if (isHeavyRain && !isTargetKind(k)) continue;
 
           const alerts = !isEarthquake ? [`*${l.label}(${l.city})にて【${k.join("、")}】が発表されています。*`] : [];
           const targetSummary = `${l.label}(${l.city})`;
@@ -517,9 +493,6 @@ async function createIncidentAndNotify(
           const k = getKinds(l);
           // 地震以外の場合、その地点に関係する警報名が1つもなければ通知しない
           if (!isEarthquake && k.length === 0) continue;
-          
-          // 気象警報の場合、対象の警報（大雨など）が含まれていない場合は通知をスキップ
-          if (isHeavyRain && !isTargetKind(k)) continue;
 
           const alerts = !isEarthquake ? [`*${l.display_name}(${l.city})にて【${k.join("、")}】が発表されています。*`] : [];
           const targetSummary = `${l.display_name}(${l.city})`;
@@ -538,20 +511,10 @@ async function createIncidentAndNotify(
         if (mode === "test" && matchedSys.length === 0 && matchedUsers.length === 0) {
           const targetSummary = actualAreasInXml.length > 0 ? actualAreasInXml.slice(0, 5).join("、") + (actualAreasInXml.length > 5 ? `ほか${actualAreasInXml.length - 5}地点` : "") : "デモ用全国通知（試験環境）";
           const targetShindo = isEarthquake ? getTargetShindo(targetSummary) : undefined;
-          
-          let allKinds = Array.from(new Set(Array.from(areaDetails.values()).flatMap((s) => Array.from(s))));
-          if (isHeavyRain) {
-             // テストモードでも、対象の警報（大雪など）が含まれていなければスキップ
-             const testKeywords = (rule.test_threshold as Record<string, any>)?.keywords ?? [];
-             if (testKeywords.length > 0) {
-               const hasTarget = allKinds.some(k => testKeywords.some((keyword: string) => k.includes(keyword)));
-               if (!hasTarget) return; // 該当する警報が一つもない場合は通知しない
-             }
-          }
-          
           const alerts = !isEarthquake ? [`*${targetSummary}にて${entry.title}が発表されています。*`] : [];
+          const allKinds = Array.from(new Set(Array.from(areaDetails.values()).flatMap((s) => Array.from(s)))).join("、");
           const threadTs = await sendNotification({
-            mode, text: buildMessage(prefix, alerts, eqInfo, rule.template, entry.title, contentText, maxInt, targetSummary, tsunamiText, eventTime, mode, allKinds.join("、"), targetShindo)
+            mode, text: buildMessage(prefix, alerts, eqInfo, rule.template, entry.title, contentText, maxInt, targetSummary, tsunamiText, eventTime, mode, allKinds, targetShindo)
           });
           if (threadTs) {
             await supabase.from("incidents").update({ slack_thread_ts: threadTs }).eq("id", incident.id);
@@ -559,15 +522,7 @@ async function createIncidentAndNotify(
         }
       }
     }
-  } catch (e: any) {
-    console.error("XML Error:", e);
-    await supabase.from("system_status").upsert({
-      id: "jma_receiver_error",
-      status: "error",
-      metadata: { error: e?.message || String(e), stack: e?.stack, time: new Date().toISOString() },
-      updated_at: new Date().toISOString()
-    });
-  }
+  } catch (e) { console.error("XML Error:", e); }
 
   await supabase.from("audit_logs").insert({
     action: "auto_incident_start", target_type: "incident", target_id: incident.id,
