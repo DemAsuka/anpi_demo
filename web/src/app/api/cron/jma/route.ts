@@ -536,26 +536,9 @@ async function createIncidentAndNotify(
 
         // --- 3. テストモードでマッチしなかった場合の全体通知 ---
         if (mode === "test" && matchedSys.length === 0 && matchedUsers.length === 0) {
-          const targetSummary = actualAreasInXml.length > 0 ? actualAreasInXml.slice(0, 5).join("、") + (actualAreasInXml.length > 5 ? `ほか${actualAreasInXml.length - 5}地点` : "") : "デモ用全国通知（試験環境）";
-          const targetShindo = isEarthquake ? getTargetShindo(targetSummary) : undefined;
-          
-          let allKinds = Array.from(new Set(Array.from(areaDetails.values()).flatMap((s) => Array.from(s))));
-          if (isHeavyRain) {
-             // テストモードでも、対象の警報（大雪など）が含まれていなければスキップ
-             const testKeywords = (rule.test_threshold as Record<string, any>)?.keywords ?? [];
-             if (testKeywords.length > 0) {
-               const hasTarget = allKinds.some(k => testKeywords.some((keyword: string) => k.includes(keyword)));
-               if (!hasTarget) return; // 該当する警報が一つもない場合は通知しない
-             }
-          }
-          
-          const alerts = !isEarthquake ? [`*${targetSummary}にて${entry.title}が発表されています。*`] : [];
-          const threadTs = await sendNotification({
-            mode, text: buildMessage(prefix, alerts, eqInfo, rule.template, entry.title, contentText, maxInt, targetSummary, tsunamiText, eventTime, mode, allKinds.join("、"), targetShindo)
-          });
-          if (threadTs) {
-            await supabase.from("incidents").update({ slack_thread_ts: threadTs }).eq("id", incident.id);
-          }
+          // テストモードで、かつ登録地点にマッチしなかった場合は「全国通知」として飛ばすのをやめ、スキップする。
+          // （無関係なエリアの注意報で毎回テスト通知が飛ぶのを防ぐため）
+          return;
         }
       }
     }
