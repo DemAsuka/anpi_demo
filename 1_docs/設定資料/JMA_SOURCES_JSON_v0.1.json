@@ -185,6 +185,37 @@
         "policy_text": "全国（対象地域が取れる場合は地域も併記）"
       },
       "slack_template": "【安否確認（国民保護）】\n国民保護情報を受信しました：{title_or_type}\n対象目安：{target_summary}\nまず身の安全確保を最優先にしてください。落ち着いたらWorkflowから安否回答してください。\n※個人情報は記載しないでください。"
+    },
+    {
+      "trigger_type": "evacuation",
+      "menu_label": "避難情報",
+      "feed_names": [
+        "extra",
+        "other"
+      ],
+      "match": {
+        "include_keywords_any": [
+          "避難指示",
+          "緊急安全確保",
+          "避難勧告",
+          "高齢者等避難"
+        ]
+      },
+      "activation": {
+        "condition_text": "避難指示、緊急安全確保が発表された場合に発動",
+        "threshold": {
+          "keywords": [
+            "避難指示",
+            "緊急安全確保"
+          ]
+        },
+        "cooldown_minutes": 120
+      },
+      "targeting": {
+        "mode": "coarse_match",
+        "policy_text": "登録地点（市区町村）が対象地域に含まれる場合に通知"
+      },
+      "slack_template": "【安否確認（避難情報）】\n気象庁情報：{warning_name} が発表されました。\n対象エリア：{target_summary}\n周囲の状況を確認し、直ちに安全な場所へ避難してください。避難完了後、落ち着いたらWorkflowから安否回答をお願いします。\n※個人情報は記載しないでください。"
     }
   ]
 }
