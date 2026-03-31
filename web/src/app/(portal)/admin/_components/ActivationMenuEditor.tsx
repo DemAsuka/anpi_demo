@@ -17,9 +17,74 @@ type Props = {
   viewMode: "prod" | "test";
 };
 
+type ThresholdOption = {
+  label: string;
+  value: string;
+  keywords?: string[];
+  min_intensity?: string;
+  min_grade?: string;
+  min_flood_level?: string;
+};
+
+const THRESHOLD_CONFIG: Record<string, { title: string; icon: string; options: ThresholdOption[] }> = {
+  shindo: {
+    title: "地震",
+    icon: "🏠",
+    options: [
+      { label: "震度 4 以上", value: "4", keywords: ["震度4", "震度４"], min_intensity: "4" },
+      { label: "震度 5弱 以上 (推奨)", value: "5-", keywords: ["震度5弱", "震度５弱"], min_intensity: "5-" },
+      { label: "震度 5強 以上", value: "5+", keywords: ["震度5強", "震度５強"], min_intensity: "5+" },
+      { label: "震度 6弱 以上", value: "6-", keywords: ["震度6弱", "震度６弱"], min_intensity: "6-" },
+    ],
+  },
+  tsunami: {
+    title: "津波",
+    icon: "🌊",
+    options: [
+      { label: "津波注意報 以上", value: "advisory", keywords: ["津波注意報"], min_grade: "advisory" },
+      { label: "津波警報 以上", value: "warning", keywords: ["津波警報"], min_grade: "warning" },
+      { label: "大津波警報 のみ", value: "major_warning", keywords: ["大津波警報"], min_grade: "major_warning" },
+    ],
+  },
+  heavy_rain: {
+    title: "豪雨",
+    icon: "☔",
+    options: [
+      { label: "大雨警報 以上", value: "warning", keywords: ["大雨警報"] },
+      { label: "特別警報 のみ", value: "special", keywords: ["特別警報"] },
+    ],
+  },
+  river_flood: {
+    title: "河川氾濫",
+    icon: "🌊",
+    options: [
+      { label: "氾濫警戒情報 以上", value: "caution", keywords: ["氾濫警戒情報"], min_flood_level: "caution" },
+      { label: "氾濫危険情報 以上", value: "danger", keywords: ["氾濫危険情報"], min_flood_level: "danger" },
+      { label: "氾濫発生情報 のみ", value: "occurrence", keywords: ["氾濫発生情報"], min_flood_level: "occurrence" },
+    ],
+  },
+  evacuation: {
+    title: "避難情報",
+    icon: "📢",
+    options: [
+      { label: "高齢者等避難 以上", value: "elderly", keywords: ["高齢者等避難"] },
+      { label: "避難指示 以上", value: "instruction", keywords: ["避難指示"] },
+      { label: "緊急安全確保 のみ", value: "emergency", keywords: ["緊急安全確保"] },
+    ],
+  },
+  civil_protection: {
+    title: "国民保護",
+    icon: "🚀",
+    options: [
+      { label: "発表時すべて", value: "all", keywords: ["国民保護", "Jアラート"] },
+    ],
+  },
+};
+
 export function ActivationMenuEditor({ menus: initialMenus, viewMode }: Props) {
   const [menus, setMenus] = useState(initialMenus);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [editingMenuId, setEditingMenuId] = useState<string | null>(null);
 
   const isTestView = viewMode === "test";
 
@@ -46,7 +111,7 @@ export function ActivationMenuEditor({ menus: initialMenus, viewMode }: Props) {
         throw new Error(errorMessage);
       }
 
-      setMenus(prev => prev.map(m => m.id === id ? { ...m, [field]: value } : m));
+      setMenus((prev) => prev.map((m) => (m.id === id ? { ...m, [field]: value } : m)));
       return true;
     } catch (err: any) {
       console.error(err);
@@ -57,161 +122,198 @@ export function ActivationMenuEditor({ menus: initialMenus, viewMode }: Props) {
     }
   };
 
-  const handleUpdateKeywords = async (id: string, keywordsStr: string, isTest: boolean) => {
-    const keywords = keywordsStr.split(",").map(k => k.trim()).filter(Boolean);
-    const field = isTest ? "test_threshold" : "threshold";
-    if (await handleUpdateField(id, field, { keywords })) {
-      alert(`${isTest ? "試験" : "本番"}用キーワードを更新しました。`);
-    }
-  };
-
-  const handleUpdateTemplate = async (id: string, template: string) => {
-    if (await handleUpdateField(id, "template", template)) {
-      alert("通知テンプレートを更新しました。");
-    }
-  };
-
   const handleToggleEnabled = async (id: string, currentEnabled: boolean, isTest: boolean) => {
     const field = isTest ? "test_enabled" : "enabled";
     await handleUpdateField(id, field, !currentEnabled);
   };
 
+  const handleSelectThreshold = async (menuId: string, option: ThresholdOption) => {
+    const isTest = isTestView;
+    const field = isTest ? "test_threshold" : "threshold";
+    
+    const newThreshold: Record<string, any> = {};
+    if (option.keywords) newThreshold.keywords = option.keywords;
+    if (option.min_intensity) newThreshold.min_intensity = option.min_intensity;
+    if (option.min_grade) newThreshold.min_grade = option.min_grade;
+    if (option.min_flood_level) newThreshold.min_flood_level = option.min_flood_level;
+
+    if (await handleUpdateField(menuId, field, newThreshold)) {
+      setEditingMenuId(null);
+    }
+  };
+
+  const getCurrentOption = (menu: ActivationMenu) => {
+    const threshold = isTestView ? menu.test_threshold : menu.threshold;
+    const config = THRESHOLD_CONFIG[menu.menu_type];
+    if (!config) return null;
+
+    // 簡易的なマッチングロジック
+    return config.options.find(opt => {
+      if (opt.min_intensity && threshold.min_intensity === opt.min_intensity) return true;
+      if (opt.min_grade && threshold.min_grade === opt.min_grade) return true;
+      if (opt.min_flood_level && threshold.min_flood_level === opt.min_flood_level) return true;
+      if (opt.keywords && threshold.keywords && JSON.stringify(opt.keywords) === JSON.stringify(threshold.keywords)) return true;
+      return false;
+    }) || null;
+  };
+
   return (
-    <section className="space-y-6">
-      <div className="space-y-12">
-        {menus.map((menu) => (
-          <div key={menu.id} className="space-y-6 bg-white rounded-[2rem] p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-            <div className="flex items-center gap-3 pb-2 border-b border-gray-100">
-              <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">
-                {menu.menu_type.replace("_", " ")}
-              </h3>
+    <div className="max-w-5xl mx-auto flex flex-col md:flex-row gap-8">
+      <div className="flex-1 space-y-4">
+        {menus.map((menu) => {
+          const config = THRESHOLD_CONFIG[menu.menu_type];
+          if (!config) return null;
+          const currentOption = getCurrentOption(menu);
+          const isEnabled = isTestView ? menu.test_enabled : menu.enabled;
+
+          return (
+            <div
+              key={menu.id}
+              className={`bg-white rounded-2xl p-4 flex items-center justify-between border border-gray-100 shadow-sm transition-all hover:shadow-md ${
+                !isEnabled ? "opacity-60 bg-gray-50" : ""
+              }`}
+            >
+              <div
+                className="flex items-center space-x-4 cursor-pointer flex-1"
+                onClick={() => isEnabled && setEditingMenuId(menu.id)}
+              >
+                <div className="w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center text-2xl">
+                  {config.icon}
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-800">{config.title}</h3>
+                  <p className="text-sm text-gray-500">
+                    設定: <span className="font-medium text-gray-700">{currentOption?.label || "カスタム設定中"}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-4">
+                <div className="flex flex-col items-center">
+                  <div className="flex items-center justify-center w-[44px] mb-1">
+                    <span className="text-[10px] font-bold tracking-tighter leading-none whitespace-nowrap">
+                      <span className="text-gray-400">OFF</span>
+                      <span className="text-gray-300 mx-1">|</span>
+                      <span className="text-blue-600">ON</span>
+                    </span>
+                  </div>
+                  <label className="relative inline-block w-11 h-6">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={isEnabled}
+                      onChange={() => handleToggleEnabled(menu.id, isEnabled, isTestView)}
+                      disabled={loadingId === menu.id}
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+                <button
+                  onClick={() => isEnabled && setEditingMenuId(menu.id)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
             </div>
+          );
+        })}
+      </div>
 
-            <div className="grid grid-cols-1 gap-8">
-              {!isTestView ? (
-                /* 本番用設定のみ表示 */
-                <div className="p-6 bg-red-50/30 rounded-[1.5rem] border border-red-100/50 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${menu.enabled ? "bg-red-500" : "bg-gray-300"}`} />
-                      <span className="text-xs font-black text-red-600 uppercase tracking-wider">Production Activation</span>
-                    </div>
-                    <button
-                      onClick={() => handleToggleEnabled(menu.id, menu.enabled, false)}
-                      disabled={loadingId === menu.id}
-                      className={`px-3 py-1 text-[9px] font-black uppercase rounded-full transition-all ${
-                        menu.enabled 
-                          ? "bg-red-100 text-red-600 hover:bg-red-200" 
-                          : "bg-gray-200 text-gray-500 hover:bg-gray-300"
-                      }`}
-                    >
-                      {menu.enabled ? "Active" : "Inactive"}
-                    </button>
-                  </div>
+      {/* サイドバー: 設定の手順 */}
+      <aside className="w-full md:w-72">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 sticky top-8">
+          <h4 className="font-bold text-gray-800 mb-4 flex items-center">
+            <span className="bg-blue-100 text-blue-600 w-6 h-6 rounded-full flex items-center justify-center text-xs mr-2">
+              💡
+            </span>
+            設定の手順
+          </h4>
+          <ol className="text-sm text-gray-600 space-y-6 list-none">
+            <li className="relative pl-8">
+              <span className="absolute left-0 top-0 w-6 h-6 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center font-bold text-xs">
+                1
+              </span>
+              <p className="font-bold text-gray-800 mb-1">通知を有効にする</p>
+              <p className="text-xs leading-relaxed">
+                右側のスイッチを<strong>ON（青色）</strong>にしてください。
+              </p>
+            </li>
+            <li className="relative pl-8">
+              <span className="absolute left-0 top-0 w-6 h-6 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center font-bold text-xs">
+                2
+              </span>
+              <p className="font-bold text-gray-800 mb-1">条件を設定する</p>
+              <p className="text-xs leading-relaxed">
+                各項目をタップして通知レベルを選択し、「保存する」を押してください。
+              </p>
+            </li>
+          </ol>
+        </div>
+      </aside>
 
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-wider text-gray-400">Current Production Keywords</label>
-                    <div className="flex flex-wrap gap-2 p-3 bg-white/50 rounded-xl min-h-[42px] border border-red-100/50">
-                      {menu.threshold?.keywords?.map((k: string, i: number) => (
-                        <span key={i} className="px-2 py-1 bg-red-100 text-red-700 text-[10px] font-bold rounded-md">{k}</span>
-                      ))}
-                    </div>
-                    <div className="flex gap-2 pt-1">
-                      <input
-                        type="text"
-                        id={`prod-keywords-${menu.id}`}
-                        placeholder="本番用キーワードを入力..."
-                        className="flex-1 bg-white border border-red-100 rounded-xl px-4 py-2 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-red-500/10"
-                      />
-                      <button
-                        onClick={() => handleUpdateKeywords(menu.id, (document.getElementById(`prod-keywords-${menu.id}`) as HTMLInputElement).value, false)}
-                        className="bg-red-600 text-white text-[9px] font-black uppercase px-4 py-2 rounded-xl hover:bg-red-700"
+      {/* モーダル (設定変更用) */}
+      {editingMenuId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold text-gray-800">
+                  {THRESHOLD_CONFIG[menus.find((m) => m.id === editingMenuId)?.menu_type || "shindo"]?.title}の設定
+                </h2>
+                <button
+                  onClick={() => setEditingMenuId(null)}
+                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                >
+                  &times;
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {THRESHOLD_CONFIG[menus.find((m) => m.id === editingMenuId)?.menu_type || "shindo"]?.options.map(
+                  (opt) => {
+                    const menu = menus.find((m) => m.id === editingMenuId);
+                    const isSelected = menu && getCurrentOption(menu)?.value === opt.value;
+                    return (
+                      <div
+                        key={opt.value}
+                        className={`flex items-center justify-between p-4 border-2 rounded-2xl cursor-pointer transition-all ${
+                          isSelected
+                            ? "border-blue-600 bg-blue-50 shadow-sm"
+                            : "border-gray-100 hover:border-gray-200"
+                        }`}
+                        onClick={() => handleSelectThreshold(editingMenuId, opt)}
                       >
-                        Update
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                /* 試験用設定のみ表示 */
-                <div className="p-6 bg-blue-50/30 rounded-[1.5rem] border border-blue-100/50 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${menu.test_enabled ? "bg-blue-500" : "bg-gray-300"}`} />
-                      <span className="text-xs font-black text-blue-600 uppercase tracking-wider">Test / Demo Activation</span>
-                    </div>
-                    <button
-                      onClick={() => handleToggleEnabled(menu.id, menu.test_enabled, true)}
-                      disabled={loadingId === menu.id}
-                      className={`px-3 py-1 text-[9px] font-black uppercase rounded-full transition-all ${
-                        menu.test_enabled 
-                          ? "bg-blue-100 text-blue-600 hover:bg-blue-200" 
-                          : "bg-gray-200 text-gray-500 hover:bg-gray-300"
-                      }`}
-                    >
-                      {menu.test_enabled ? "Active" : "Inactive"}
-                    </button>
-                  </div>
+                        <span className={`font-bold ${isSelected ? "text-blue-700" : "text-gray-700"}`}>
+                          {opt.label}
+                        </span>
+                        <div
+                          className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                            isSelected ? "border-blue-600 bg-blue-600" : "border-gray-300"
+                          }`}
+                        >
+                          {isSelected && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                        </div>
+                      </div>
+                    );
+                  }
+                )}
+              </div>
 
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-wider text-gray-400">Current Test Keywords</label>
-                    <div className="flex flex-wrap gap-2 p-3 bg-white/50 rounded-xl min-h-[42px] border border-blue-100/50">
-                      {menu.test_threshold?.keywords?.map((k: string, i: number) => (
-                        <span key={i} className="px-2 py-1 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-md">{k}</span>
-                      ))}
-                    </div>
-                    <div className="flex gap-2 pt-1">
-                      <input
-                        type="text"
-                        id={`test-keywords-${menu.id}`}
-                        placeholder="試験用キーワードを入力..."
-                        className="flex-1 bg-white border border-blue-100 rounded-xl px-4 py-2 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-blue-500/10"
-                      />
-                      <button
-                        onClick={() => handleUpdateKeywords(menu.id, (document.getElementById(`test-keywords-${menu.id}`) as HTMLInputElement).value, true)}
-                        className="bg-blue-600 text-white text-[9px] font-black uppercase px-4 py-2 rounded-xl hover:bg-blue-700"
-                      >
-                        Update
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* テンプレート編集（共通） */}
-              <div className="p-6 bg-gray-50/50 rounded-[1.5rem] border border-gray-100 space-y-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-black text-gray-600 uppercase tracking-wider">Notification Template</span>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-gray-400">Message Template</label>
-                  <textarea
-                    id={`template-${menu.id}`}
-                    defaultValue={menu.template || ""}
-                    rows={4}
-                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-gray-500/10 resize-none"
-                    placeholder="通知テンプレートを入力... (例: {title}\n{content})"
-                  />
-                  <div className="flex justify-between items-center pt-1">
-                    <p className="text-[9px] text-gray-400 font-medium">
-                      利用可能: {"{title}, {content}, {target_summary}, {max_shindo}"}
-                      {menu.menu_type === "heavy_rain" && " / 気象用: {warning_name}"}
-                    </p>
-                    <button
-                      onClick={() => handleUpdateTemplate(menu.id, (document.getElementById(`template-${menu.id}`) as HTMLTextAreaElement).value)}
-                      disabled={loadingId === menu.id}
-                      className="bg-gray-900 text-white text-[9px] font-black uppercase px-6 py-2 rounded-xl hover:bg-black transition-colors"
-                    >
-                      Save Template
-                    </button>
-                  </div>
-                </div>
+              <div className="mt-8">
+                <button
+                  onClick={() => setEditingMenuId(null)}
+                  className="w-full py-4 bg-gray-100 text-gray-700 font-bold rounded-2xl hover:bg-gray-200 transition-colors"
+                >
+                  キャンセル
+                </button>
               </div>
             </div>
           </div>
-        ))}
-      </div>
-    </section>
+        </div>
+      )}
+    </div>
   );
 }
-
