@@ -89,10 +89,9 @@
         ]
       },
       "activation": {
-        "condition_text": "津波警報以上（警報/大津波警報）で発動（注意報のみは「通知のみ」運用も可）",
+        "condition_text": "津波注意報以上（注意報/警報/大津波警報）で発動",
         "threshold": {
-          "min_grade": "warning",
-          "notify_only_if_grade_below": "warning"
+          "min_grade": "advisory"
         },
         "cooldown_minutes": 60
       },
