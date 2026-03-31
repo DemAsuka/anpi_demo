@@ -27,7 +27,7 @@ type ThresholdOption = {
 };
 
 const THRESHOLD_CONFIG: Record<string, { title: string; icon: string; options: ThresholdOption[] }> = {
-  shindo: {
+  earthquake: {
     title: "地震",
     icon: "🏠",
     options: [
@@ -54,7 +54,7 @@ const THRESHOLD_CONFIG: Record<string, { title: string; icon: string; options: T
       { label: "特別警報 のみ", value: "special", keywords: ["特別警報"] },
     ],
   },
-  river_flood: {
+  flood: {
     title: "河川氾濫",
     icon: "🌊",
     options: [
@@ -261,7 +261,7 @@ export function ActivationMenuEditor({ menus: initialMenus, viewMode }: Props) {
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-gray-800">
-                  {THRESHOLD_CONFIG[menus.find((m) => m.id === editingMenuId)?.menu_type || "shindo"]?.title}の設定
+                  {THRESHOLD_CONFIG[menus.find((m) => m.id === editingMenuId)?.menu_type || "earthquake"]?.title}の設定
                 </h2>
                 <button
                   onClick={() => setEditingMenuId(null)}
@@ -272,7 +272,7 @@ export function ActivationMenuEditor({ menus: initialMenus, viewMode }: Props) {
               </div>
 
               <div className="space-y-3">
-                {THRESHOLD_CONFIG[menus.find((m) => m.id === editingMenuId)?.menu_type || "shindo"]?.options.map(
+                {THRESHOLD_CONFIG[menus.find((m) => m.id === editingMenuId)?.menu_type || "earthquake"]?.options.map(
                   (opt) => {
                     const menu = menus.find((m) => m.id === editingMenuId);
                     const isSelected = menu && getCurrentOption(menu)?.value === opt.value;
