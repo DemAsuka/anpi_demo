@@ -20,6 +20,16 @@ AIエージェントは変更を加えるたびに、このファイルに作業
 
 <!-- ここから下に追記していく（最新のものを一番上にする） -->
 
+### [#007] 2026-04-07
+- **ステータス**: `[確認待ち]`
+- **概要**: 安否訓練（drill）の Slack 通知を本番と同じチャンネルへ送るよう変更し、仙台・震度6想定の訓練用 JMAXML サンプルを追加
+- **目的**: 訓練時も `SLACK_PRODUCTION_CHANNEL_ID` で Bot 投稿し、従業員が本番と同じ手順でボタン回答できるようにするため。あわせて訓練シナリオ説明用の XML サンプルを用意するため
+- **主な変更ファイル**:
+  - `web/src/lib/slack/notify.ts`
+  - `web/drill_sendai_shindo6.xml`
+- **関連**: なし
+- **備考**: ブランチ名 `feature/drill-slack-channel`。`mode === "drill"` かつ `SLACK_BOT_TOKEN` と `SLACK_PRODUCTION_CHANNEL_ID` がある場合は DM より先にチャンネル投稿。訓練でも `SLACK_PRODUCTION_MENTIONS` を本番と同様に適用。Webhook フォールバックは `drill` で `SLACK_PRODUCTION_WEBHOOK_URL` を利用可能に統一
+
 ### [#006] 2026-03-26
 - **ステータス**: `[確認待ち]`
 - **概要**: 災害通知設定画面をYahoo!防災速報風のUIに刷新
