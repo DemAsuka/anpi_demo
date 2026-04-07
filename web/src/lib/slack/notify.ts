@@ -118,9 +118,9 @@ export async function sendNotification(params: {
 
   const demoPrefix = params.forceDemoPrefix || env.DEMO_MODE() ? "[DEMO] " : "";
 
-  // 本番時は環境変数 SLACK_PRODUCTION_MENTIONS を優先（here / channel / Uxxxx）
+  // 本番・訓練（本番CH投稿時）は環境変数 SLACK_PRODUCTION_MENTIONS を優先（here / channel / Uxxxx）
   const rawMentions =
-    mode === "production" && env.SLACK_PRODUCTION_MENTIONS()
+    (mode === "production" || mode === "drill") && env.SLACK_PRODUCTION_MENTIONS()
       ? env
           .SLACK_PRODUCTION_MENTIONS()!
           .split(",")
@@ -142,14 +142,13 @@ export async function sendNotification(params: {
   const dmUserId = env.SLACK_DM_USER_ID();
   const productionChannelId = env.SLACK_PRODUCTION_CHANNEL_ID();
 
-  // DM 用（デモなど）
-  if (botToken && dmUserId && !(mode === "production" && productionChannelId)) {
-    console.log("Sending Slack DM to:", dmUserId);
-    return await postToDm(botToken, dmUserId, text, params.isDrill);
-  }
+  const postToProductionChannel =
+    botToken &&
+    productionChannelId &&
+    (mode === "production" || mode === "drill");
 
-  // 本番: Bot でチャンネル投稿（ボタンが同じアプリに届くためクリックで反応する）
-  if (mode === "production" && botToken && productionChannelId) {
+  // 本番・訓練: Bot でチャンネル投稿（ボタンが同じアプリに届くためクリックで反応する）
+  if (postToProductionChannel) {
     console.log("Sending Slack to channel:", productionChannelId);
     const blocks = buildMessageBlocks(text);
     const post = await slackApi<{ ok: boolean; error?: string; ts?: string }>(botToken, "chat.postMessage", {
@@ -163,9 +162,15 @@ export async function sendNotification(params: {
     return post.ts;
   }
 
+  // DM 用（チャンネル未設定のデモ・試験など）
+  if (botToken && dmUserId) {
+    console.log("Sending Slack DM to:", dmUserId);
+    return await postToDm(botToken, dmUserId, text, params.isDrill);
+  }
+
   // Webhook フォールバック（ボタンは表示されるが、別アプリの Webhook だとクリックが届かない場合あり）
   const webhookUrl =
-    mode === "production" && env.SLACK_PRODUCTION_WEBHOOK_URL()
+    (mode === "production" || mode === "drill") && env.SLACK_PRODUCTION_WEBHOOK_URL()
       ? env.SLACK_PRODUCTION_WEBHOOK_URL()!
       : env.SLACK_WEBHOOK_URL();
   if (webhookUrl) {

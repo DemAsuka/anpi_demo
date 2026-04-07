@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  訓練・検証用サンプル（実際の気象庁配信ではありません）。
+  シナリオ: 仙台付近で震度6を想定した震源・震度に関する情報（VXSE43 相当の構造イメージ）。
+  参照: web/sample_earthquake.xml および気象庁 JMAXML 地震火山関連資料。
+-->
+<Report xmlns="http://xml.kishou.go.jp/jmaxml1/" xmlns:jmx="http://xml.kishou.go.jp/jmaxml1/">
+<Control>
+<Title>震源・震度に関する情報</Title>
+<DateTime>2026-04-07T06:00:00Z</DateTime>
+<Status>訓練</Status>
+<EditorialOffice>（訓練用サンプル）</EditorialOffice>
+<PublishingOffice>（訓練用サンプル）</PublishingOffice>
+</Control>
+<Head xmlns="http://xml.kishou.go.jp/jmaxml1/informationBasis1/">
+<Title>震源・震度情報</Title>
+<ReportDateTime>2026-04-07T15:00:00+09:00</ReportDateTime>
+<TargetDateTime>2026-04-07T15:00:00+09:00</TargetDateTime>
+<EventID>DRILL20260407150000</EventID>
+<InfoType>発表</InfoType>
+<Serial>1</Serial>
+<InfoKind>地震情報</InfoKind>
+<InfoKindVersion>1.0_1</InfoKindVersion>
+<Headline>
+<Text>７日１５時００分ころ、地震がありました（訓練用シナリオ）。</Text>
+</Headline>
+</Head>
+<Body xmlns="http://xml.kishou.go.jp/jmaxml1/body/seismology1/" xmlns:jmx_eb="http://xml.kishou.go.jp/jmaxml1/elementBasis1/">
+<Earthquake>
+<OriginTime>2026-04-07T14:58:00+09:00</OriginTime>
+<ArrivalTime>2026-04-07T14:58:00+09:00</ArrivalTime>
+<Hypocenter>
+<Area>
+<Name>宮城県沖</Name>
+<Code type="震央地名">288</Code>
+<jmx_eb:Coordinate description="北緯３８．３度　東経１４１．０度　深さ１０ｋｍ">+38.3+141.0+10000/</jmx_eb:Coordinate>
+</Area>
+</Hypocenter>
+<jmx_eb:Magnitude type="Mj" description="Ｍ７．１">7.1</jmx_eb:Magnitude>
+</Earthquake>
+<Intensity>
+<Observation>
+<CodeDefine>
+<Type xpath="Pref/Code">地震情報／都道府県等</Type>
+<Type xpath="Pref/Area/Code">地震情報／細分区域</Type>
+<Type xpath="Pref/Area/City/Code">気象・地震・火山情報／市町村等</Type>
+<Type xpath="Pref/Area/City/IntensityStation/Code">震度観測点</Type>
+</CodeDefine>
+<MaxInt>6</MaxInt>
+<Pref>
+<Name>宮城県</Name>
+<Code>04</Code>
+<MaxInt>6</MaxInt>
+<Area>
+<Name>仙台</Name>
+<Code>241</Code>
+<MaxInt>6</MaxInt>
+<City>
+<Name>仙台市</Name>
+<Code>04100</Code>
+<MaxInt>6</MaxInt>
+<IntensityStation>
+<Name>仙台市青葉区＊</Name>
+<Code>0410110</Code>
+<Int>6</Int>
+</IntensityStation>
+</City>
+</Area>
+</Pref>
+</Observation>
+</Intensity>
+<Comments>
+<ForecastComment codeType="固定付加文">
+<Text>この地震による津波の心配はありません（訓練用シナリオ）。</Text>
+<Code>0215</Code>
+</ForecastComment>
+</Comments>
+</Body>
+</Report>
