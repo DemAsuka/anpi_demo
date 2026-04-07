@@ -51,12 +51,18 @@ function buildMessageBlocks(text: string) {
   ];
 }
 
-async function postToWebhook(webhookUrl: string, text: string): Promise<string | undefined> {
-  const blocks = buildMessageBlocks(text);
-  const res = await fetch(webhookUrl, {
+async function postToWebhook(
+  webhookUrl: string,
+  text: string,
+  includeInteractiveBlocks: boolean,
+): Promise<string | undefined> {
+  const body = includeInteractiveBlocks
+    ? { text, blocks: buildMessageBlocks(text) }
+    : { text };
+  await fetch(webhookUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ text, blocks }),
+    body: JSON.stringify(body),
   });
   // Incoming Webhook doesn't return thread_ts
   return undefined;
@@ -66,7 +72,7 @@ async function postToDm(
   token: string,
   userId: string,
   text: string,
-  isDrill?: boolean,
+  includeInteractiveBlocks: boolean,
 ): Promise<string | undefined> {
   // Open (or fetch) a DM channel id with the user
   const open = await slackApi<{ ok: boolean; channel?: { id: string }; error?: string }>(
@@ -78,12 +84,14 @@ async function postToDm(
     throw new Error(`Slack conversations.open failed: ${open.error ?? "unknown"}`);
   }
 
-  const blocks = buildMessageBlocks(text);
-  const post = await slackApi<{ ok: boolean; error?: string; ts?: string }>(token, "chat.postMessage", {
+  const postBody: Record<string, unknown> = {
     channel: open.channel.id,
-    text, // Fallback text
-    blocks,
-  });
+    text,
+  };
+  if (includeInteractiveBlocks) {
+    postBody.blocks = buildMessageBlocks(text);
+  }
+  const post = await slackApi<{ ok: boolean; error?: string; ts?: string }>(token, "chat.postMessage", postBody);
   if (!post.ok) {
     throw new Error(`Slack chat.postMessage failed: ${post.error ?? "unknown"}`);
   }
@@ -98,29 +106,43 @@ export async function sendNotification(params: {
   isDrill?: boolean;
   mode?: NotificationMode;
   mentions?: string[];
+  /** 疎通確認用: プレフィックス・本番メンション・安否ボタンを付けない（text のみ） */
+  connectivityTest?: boolean;
 }): Promise<string | undefined> {
-  console.log("Slack Notification Request:", { mode: params.mode, text: params.text, mentions: params.mentions });
+  const connectivityTest = params.connectivityTest === true;
+  const includeInteractiveBlocks = !connectivityTest;
+
+  console.log("Slack Notification Request:", {
+    mode: params.mode,
+    text: params.text,
+    mentions: params.mentions,
+    connectivityTest,
+  });
   let modePrefix = "";
   const mode = params.mode || (params.isDrill ? "drill" : "production");
 
-  switch (mode) {
-    case "drill":
-      modePrefix = "【訓練】";
-      break;
-    case "test":
-      modePrefix = "【試験/TEST】";
-      break;
-    case "production":
-    default:
-      modePrefix = "【安否確認】";
-      break;
+  if (!connectivityTest) {
+    switch (mode) {
+      case "drill":
+        modePrefix = "【訓練】";
+        break;
+      case "test":
+        modePrefix = "【試験/TEST】";
+        break;
+      case "production":
+      default:
+        modePrefix = "【安否確認】";
+        break;
+    }
   }
 
-  const demoPrefix = params.forceDemoPrefix || env.DEMO_MODE() ? "[DEMO] " : "";
+  const demoPrefix =
+    connectivityTest ? "" : params.forceDemoPrefix || env.DEMO_MODE() ? "[DEMO] " : "";
 
   // 本番・訓練（本番CH投稿時）は環境変数 SLACK_PRODUCTION_MENTIONS を優先（here / channel / Uxxxx）
-  const rawMentions =
-    (mode === "production" || mode === "drill") && env.SLACK_PRODUCTION_MENTIONS()
+  const rawMentions = connectivityTest
+    ? params.mentions
+    : (mode === "production" || mode === "drill") && env.SLACK_PRODUCTION_MENTIONS()
       ? env
           .SLACK_PRODUCTION_MENTIONS()!
           .split(",")
@@ -136,7 +158,9 @@ export async function sendNotification(params: {
 
   const mentionText = rawMentions && rawMentions.length > 0 ? rawMentions.join(" ") + "\n" : "";
 
-  const text = `${modePrefix}${demoPrefix}\n${mentionText}${params.text}`;
+  const text = connectivityTest
+    ? `${mentionText}${params.text}`
+    : `${modePrefix}${demoPrefix}\n${mentionText}${params.text}`;
 
   const botToken = env.SLACK_BOT_TOKEN();
   const dmUserId = env.SLACK_DM_USER_ID();
@@ -150,12 +174,14 @@ export async function sendNotification(params: {
   // 本番・訓練: Bot でチャンネル投稿（ボタンが同じアプリに届くためクリックで反応する）
   if (postToProductionChannel) {
     console.log("Sending Slack to channel:", productionChannelId);
-    const blocks = buildMessageBlocks(text);
-    const post = await slackApi<{ ok: boolean; error?: string; ts?: string }>(botToken, "chat.postMessage", {
+    const postBody: Record<string, unknown> = {
       channel: productionChannelId,
       text,
-      blocks,
-    });
+    };
+    if (includeInteractiveBlocks) {
+      postBody.blocks = buildMessageBlocks(text);
+    }
+    const post = await slackApi<{ ok: boolean; error?: string; ts?: string }>(botToken, "chat.postMessage", postBody);
     if (!post.ok) {
       throw new Error(`Slack chat.postMessage failed: ${post.error ?? "unknown"}`);
     }
@@ -165,7 +191,7 @@ export async function sendNotification(params: {
   // DM 用（チャンネル未設定のデモ・試験など）
   if (botToken && dmUserId) {
     console.log("Sending Slack DM to:", dmUserId);
-    return await postToDm(botToken, dmUserId, text, params.isDrill);
+    return await postToDm(botToken, dmUserId, text, includeInteractiveBlocks);
   }
 
   // Webhook フォールバック（ボタンは表示されるが、別アプリの Webhook だとクリックが届かない場合あり）
@@ -175,7 +201,7 @@ export async function sendNotification(params: {
       : env.SLACK_WEBHOOK_URL();
   if (webhookUrl) {
     console.log("Sending Slack Webhook to:", webhookUrl.substring(0, 20) + "...");
-    await postToWebhook(webhookUrl, text);
+    await postToWebhook(webhookUrl, text, includeInteractiveBlocks);
     return undefined;
   }
 

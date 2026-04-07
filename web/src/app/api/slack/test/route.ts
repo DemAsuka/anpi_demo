@@ -5,8 +5,9 @@ import { sendNotification } from "@/lib/slack/notify";
 export const runtime = "nodejs";
 
 /**
- * 本番と同じ設定（SLACK_PRODUCTION_WEBHOOK_URL + SLACK_PRODUCTION_MENTIONS）で
- * テスト通知を1通送る。認証は CRON_SECRET（クエリ token またはヘッダー x-cron-secret）。
+ * 疎通確認用: 本番チャンネル（または DM / Webhook フォールバック）へプレーンテキストを1通送る。
+ * 安否ボタン・【安否確認】プレフィックス・SLACK_PRODUCTION_MENTIONS は付けない。
+ * 認証は CRON_SECRET（クエリ token またはヘッダー x-cron-secret）。
  */
 export async function GET(request: NextRequest) {
   const token =
@@ -18,10 +19,9 @@ export async function GET(request: NextRequest) {
   try {
     await sendNotification({
       mode: "production",
+      connectivityTest: true,
       text: [
-        "これはテスト通知です。",
-        "本番用のSlack設定（通知先・メンション）が正しく動作しています。",
-        "",
+        "通知確認用のテスト通知です。",
         "送信時刻: " + new Date().toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }),
       ].join("\n"),
     });
