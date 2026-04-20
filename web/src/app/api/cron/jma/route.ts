@@ -443,6 +443,7 @@ async function createIncidentAndNotify(
 
         const isEarthquake = rule.menu_type === "earthquake";
         const isHeavyRain = rule.menu_type === "heavy_rain";
+        const isTsunami = rule.menu_type === "tsunami";
         const getTargetShindo = (targetSummary: string, city?: string | null): string => {
           if (!isEarthquake || intensityByArea.size === 0) return maxInt;
           const searchTerms = city ? [city, targetSummary] : [targetSummary];
@@ -485,9 +486,9 @@ async function createIncidentAndNotify(
         // 気象警報の場合、実際に発表されている警報内容（Kinds）の中に、設定されたキーワード（大雨、特別警報など）が含まれているかチェックする
         const ruleKeywords = (rule.threshold as Record<string, any>)?.keywords ?? [];
         const isTargetKind = (kinds: string[]) => {
-          if (!isHeavyRain) return true;
+          if (!isHeavyRain && !isTsunami) return true;
           if (ruleKeywords.length === 0) return true;
-          // 警報の種類（例：乾燥注意報、大雨警報）の中に、キーワード（大雨、特別警報）が含まれているか
+          // 警報の種類（例：乾燥注意報、大雨警報、津波注意報）の中に、キーワードが含まれているか
           return kinds.some(k => ruleKeywords.some((keyword: string) => k.includes(keyword)));
         };
 
@@ -497,8 +498,8 @@ async function createIncidentAndNotify(
           // 地震以外の場合、その地点に関係する警報名が1つもなければ通知しない
           if (!isEarthquake && k.length === 0) continue;
           
-          // 気象警報の場合、対象の警報（大雨など）が含まれていない場合は通知をスキップ
-          if (isHeavyRain && !isTargetKind(k)) continue;
+          // 気象警報・津波の場合、対象の警報種別が含まれていない場合は通知をスキップ
+          if ((isHeavyRain || isTsunami) && !isTargetKind(k)) continue;
 
           const alerts = !isEarthquake ? [`*${l.label}(${l.city})にて【${k.join("、")}】が発表されています。*`] : [];
           const targetSummary = `${l.label}(${l.city})`;
@@ -518,8 +519,8 @@ async function createIncidentAndNotify(
           // 地震以外の場合、その地点に関係する警報名が1つもなければ通知しない
           if (!isEarthquake && k.length === 0) continue;
           
-          // 気象警報の場合、対象の警報（大雨など）が含まれていない場合は通知をスキップ
-          if (isHeavyRain && !isTargetKind(k)) continue;
+          // 気象警報・津波の場合、対象の警報種別が含まれていない場合は通知をスキップ
+          if ((isHeavyRain || isTsunami) && !isTargetKind(k)) continue;
 
           const alerts = !isEarthquake ? [`*${l.display_name}(${l.city})にて【${k.join("、")}】が発表されています。*`] : [];
           const targetSummary = `${l.display_name}(${l.city})`;
