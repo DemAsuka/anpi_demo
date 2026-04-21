@@ -9,12 +9,17 @@ type SystemLocation = {
   label: string;
   prefecture: string;
   city: string;
-  jma_code?: string;
-  jma_name?: string;
-  jma_area_name?: string;
-  jma_area_code?: string;
+  address?: string | null;
+  jma_code?: string | null;
+  jma_name?: string | null;
+  jma_area_name?: string | null;
+  jma_area_code?: string | null;
   is_permanent: boolean;
   valid_until: string | null;
+  target_group: string;
+  sort_order: number;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export function SystemLocationEditor({ initialLocations }: { initialLocations: SystemLocation[] }) {
