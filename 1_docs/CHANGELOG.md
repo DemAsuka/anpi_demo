@@ -20,6 +20,22 @@ AIエージェントは変更を加えるたびに、このファイルに作業
 
 <!-- ここから下に追記していく（最新のものを一番上にする） -->
 
+### [#010] 2026-04-21
+- **ステータス**: `[確認待ち]`
+- **概要**: `system_locations` テーブルの不足カラム補完・構造修正
+- **目的**: 複数のマイグレーションに分散して追加されたカラムの NULL 補完と、過去の構文バグの修正を一括で行う
+- **主な変更ファイル**:
+  - `supabase/migrations/20260421000000_complete_system_locations.sql`（新規）
+  - `web/src/app/(portal)/admin/_components/SystemLocationEditor.tsx`（型定義に `target_group`, `sort_order` 等を追加）
+- **修正内容**:
+  - ① `city` カラムの NOT NULL 制約を確実に解除（以前のマイグレーションの構文バグ修正）
+  - ② `updated_at` 自動更新トリガーを `system_locations` / `user_locations` の両テーブルに設定
+  - ③ `sort_order` に検索インデックスを追加
+  - ④ `target_group` が NULL のレコードを `'all'` で補完
+  - ⑤ `city` 名をもとに `jma_code` / `jma_name` / `jma_area_name` / `jma_area_code` を自動補完（全国主要都市対応）
+- **関連**: なし
+- **備考**: ブランチ名 `fix/010-system-locations-complete`。DBマイグレーションをSupabase管理画面で適用する必要あり
+
 ### [#009] 2026-04-17
 - **ステータス**: `[確認待ち]`
 - **概要**: 津波注意報・警報のSlack通知に対応
